@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PortFight — Harbor graybox</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game-root"></div>
+    <div id="hud">
+      <div id="portrait" class="dockhand" title="Dockhand PFP"></div>
+      <div id="clock-block">
+        <div id="navy-clock">10:00</div>
+        <div id="navy-label">Navy clock</div>
+      </div>
+      <div id="hud-right">
+        <div id="vitals">
+          <div id="hp-wrap"><div id="hp-bar"></div></div>
+          <div id="weapon-line">Cutlass</div>
+          <div id="trophy-line">Trophy: —</div>
+        </div>
+        <div id="inspect" class="hidden">
+          <div id="inspect-name">Pirate</div>
+          <div id="inspect-weapon">Cutlass</div>
+          <div id="inspect-trophy">Trophy: —</div>
+        </div>
+      </div>
+      <div id="event-toast"></div>
+    </div>
+    <div id="prompt"></div>
+    <div id="minimap-legend">
+      WASD move · mouse aim · click to swing / fire · Q holster gun · 1 cutlass · 2 gun · E
+      pick up / extract · R restart
+    </div>
+    <div id="overlay" class="hidden">
+      <div class="panel">
+        <h1 id="overlay-title">Extracted</h1>
+        <p id="overlay-body"></p>
+        <p id="stash-line"></p>
+        <button id="craft-btn" class="hidden">Craft Dockhand colorway (5 junk)</button>
+        <button id="again-btn">Back into the harbor</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
