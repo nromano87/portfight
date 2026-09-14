@@ -1,7 +1,41 @@
 import * as THREE from "three";
-import { AimWedge, weaponReach } from "./aim";
+import { RangeRing, weaponReach } from "./aim";
+import {
+  PIRATE_NAMES,
+  PIRATE_ART,
+  PLAYABLE_PIRATES,
+  PIRATE_YAW,
+  artReady,
+  chestForLoot,
+  dummyPirate,
+  flashPirate,
+  hasBody,
+  hasProp,
+  loadArt,
+  makeChest,
+  makePirate,
+  makeProp,
+  pirateSwing,
+  playPirate,
+  pirateDie,
+  pirateDeathLift,
+  poseHeld,
+  resetPirateLive,
+  setChestOpen,
+  showHeld,
+  tickOcean,
+  tickPirateDie,
+  weaponBoom,
+  weaponTexture,
+  type BodyId,
+  type ChestRig,
+  type HeldKit,
+  type PirateId,
+  type PirateRig,
+} from "./art";
 import {
   BELL_OPEN_AT,
+  EXTRACT_CAMP_SECONDS,
   EXTRACT_CHANNEL,
   EXTRACT_OPEN_AT,
   FLINT_AMMO,
@@ -9,6 +43,7 @@ import {
   HIT_RADIUS,
   HUNT_AFTER,
   MATCH_SECONDS,
+  MAP,
   MELEE_COOLDOWN,
   MELEE_DAMAGE,
   DUMMY_FLINT_DAMAGE,
@@ -21,59 +56,108 @@ import {
   PICKUP_RANGE,
   PLAYER_HP,
   PLAYER_SPEED,
-  EXTRACT_CAMP_SECONDS,
+  JUMP_VEL,
+  GRAVITY,
+  UNIT,
+  PIRATE_SCALE,
+  UNLOCK_ALL_SKINS,
+  ISLAND_IDS,
+  ISLANDS,
+  islandName,
+  isIslandId,
+  nextIsland,
   rectCenter,
+  rollTrophy,
+  trophyName,
+  trophyRarity,
+  trophyRarityColor,
+  trophyArt,
+  weaponArt,
+  trophyTier,
+  type IslandId,
   type TrophyId,
   type WeaponId,
 } from "./config";
 import {
+  CRAFT_SKINS,
+  SKINS,
+  canAfford,
+  consumeNeed,
+  markerColor,
+  needLabel,
+  needStatus,
+  type SkinId,
+} from "./skins";
+import {
   EXTRACT_BELL,
   EXTRACT_GULL,
   EXTRACT_WREN,
-  LOOT_SPOTS,
+  allLootSpots,
   SPAWNS,
+  COVER,
   blockedByWall,
   buildHarbor,
+  coverBlocked,
   deckHeight,
+  dressHarbor,
+  standHeight,
+  extractPadY,
   extractZone,
+  pulseExtractGlows,
   isWalkable,
+  mapFrameRects,
   navStep,
-  nudgeOffCorner,
+  nearestClearPoint,
   pickFleePoint,
   walkClear,
-  nearestClearPoint,
   emptyNav,
   pierWithoutShip,
+  pierLabel,
+  placeDecor,
   placeNavyShips,
   revealRoofs,
   type LootKind,
+  type LootSpot,
   type NavCache,
   type NavyShip,
+  type ExtractGlow,
   type Roof,
 } from "./harbor";
-import { sfxHit, sfxHurt, sfxKill, sfxShot, sfxSwing, unlockAudio } from "./sfx";
+import { combatGain, sfxCraft, sfxExtract, sfxHit, sfxHurt, sfxKill, sfxNavySting, sfxOpen, sfxPickup, sfxReload, sfxShot, sfxSwing, startMatchAudio, startMenuMusic, unlockAudio } from "./sfx";
+import { loadProgress, saveProgress } from "./save";
 
 type Primary = WeaponId | null;
 
 type LootBox = {
-  spot: (typeof LOOT_SPOTS)[number];
-  mesh: THREE.Mesh;
-  hoop: THREE.Mesh;
+  spot: LootSpot;
+  mesh: THREE.Object3D;
   opened: boolean;
   closedColor: number;
+  chest?: ChestRig;
+  hintOpen: THREE.Sprite;
+  hintReload: THREE.Sprite | null;
+  loot: ContainerLoot;
+};
+
+type ContainerLoot = {
+  weapon?: WeaponId;
+  ammo?: number;
+  trophy?: TrophyId;
+  rum?: boolean;
 };
 
 type GroundItem = {
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
   x: number;
   z: number;
   weapon?: WeaponId;
   ammo?: number;
   trophy?: TrophyId;
+  hintPickup: THREE.Sprite | null;
 };
 
 type Fighter = {
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
   x: number;
   z: number;
   hp: number;
@@ -84,25 +168,52 @@ type Fighter = {
   trophy: TrophyId | null;
   cooldown: number;
   alive: boolean;
+  corpse: boolean;
+  dieT: number;
+  fallSide: number;
   dummy: boolean;
   wanderT: number;
   tx: number;
   tz: number;
   spawnIndex: number;
   color: number;
-  aim: AimWedge;
+  aim: RangeRing;
   hpPip?: THREE.Mesh;
+  trophyIcon?: THREE.Sprite;
   rummage: number;
   lootReadyAt: number;
   extractHold: number;
   nav: NavCache;
   marker?: THREE.Mesh;
+  y: number;
+  vy: number;
+  grounded: boolean;
+  jumpCool: number;
+  rig?: PirateRig;
+  kit?: HeldKit;
+  pirate?: PirateId;
+  px: number;
+  pz: number;
 };
+
+function bodyHalf(f: Fighter): number {
+  return (f.dummy ? 1 : 1.12) * UNIT * PIRATE_SCALE;
+}
+
+function deathEase(t: number): number {
+  const u = Math.min(1, Math.max(0, t / 0.68));
+  return u * u * (3 - 2 * u);
+}
 
 function weaponName(w: Primary): string {
   if (w === "flintlock") return "Flintlock";
   if (w === "musket") return "Musket";
   return "Cutlass";
+}
+
+function containerLabel(kind: LootKind): string {
+  if (kind === "trophy-chest") return "trophy chest";
+  return kind;
 }
 
 function pirateCoat(color: number): string {
@@ -114,61 +225,253 @@ function pirateCoat(color: number): string {
   if (color === 0x6a4a7c) return "Plum coat";
   if (color === 0x4a4a7c) return "Blue coat";
   if (color === 0xe8d5a3) return "Sand coat";
-  if (color === 0x7ec8e3) return "Dockhand colorway";
   return "Pirate";
-}
-
-function trophyName(t: TrophyId | null): string {
-  if (t === "keep-seal") return "Keep Seal";
-  if (t === "junk") return "Bent doubloon";
-  return "—";
 }
 
 function navyClock(elapsed: number): string {
   const t = Math.min(1, elapsed / MATCH_SECONDS);
-  const remain = Math.max(0, 600 - t * 600);
+  const remain = Math.max(0, MATCH_SECONDS * (1 - t));
   const m = Math.floor(remain / 60);
   const s = Math.floor(remain % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function rollContainer(kind: LootKind): {
-  weapon?: WeaponId;
-  ammo?: number;
-  trophy?: TrophyId;
-  rum?: boolean;
-} {
-  const n = Math.random();
-  if (kind === "chest") return { trophy: "keep-seal" };
+function paintTrophyCard(card: HTMLElement, id: TrophyId | null) {
+  const portrait = card.querySelector(".trophy-portrait") as HTMLElement;
+  const held = card.querySelector(".trophy-held") as HTMLElement;
+  const rarity = card.querySelector(".trophy-rarity") as HTMLElement;
+  if (!id) {
+    card.classList.add("empty");
+    held.textContent = "";
+    rarity.textContent = "";
+    portrait.style.borderColor = "";
+    portrait.style.backgroundImage = "";
+    portrait.style.backgroundColor = "";
+    rarity.style.color = "";
+    portrait.title = "";
+    return;
+  }
+  card.classList.remove("empty");
+  const edge = trophyRarityColor(id);
+  held.textContent = trophyName(id);
+  rarity.textContent = trophyRarity(id);
+  rarity.style.color = edge;
+  portrait.style.borderColor = edge;
+  portrait.style.backgroundImage = `url("${trophyArt(id)}")`;
+  portrait.style.backgroundColor = "#1a1612";
+  portrait.title = `${trophyName(id)} · ${trophyRarity(id)}`;
+}
+
+function lootSize(kind: LootKind): { w: number; d: number; h: number } {
+  if (kind === "barrel") return { w: 1.1 * UNIT, d: 1.1 * UNIT, h: 1.15 * UNIT };
+  if (kind === "crate") return { w: 1.12 * UNIT, d: 1.12 * UNIT, h: 0.85 * UNIT };
+  if (kind === "lockbox" || kind === "chest" || kind === "trophy-chest") {
+    return { w: 1.9 * UNIT, d: 1.35 * UNIT, h: 0.95 * UNIT };
+  }
+  return { w: 1.15 * UNIT, d: 0.85 * UNIT, h: 0.7 * UNIT };
+}
+
+function lootHeight(kind: LootKind): number {
+  return lootSize(kind).h;
+}
+
+const HINT_TEX = new Map<string, THREE.CanvasTexture>();
+
+function hintSprite(text: string, color: string): THREE.Sprite {
+  const key = `${text}|${color}`;
+  let tex = HINT_TEX.get(key);
+  if (!tex) {
+    const c = document.createElement("canvas");
+    c.width = 768;
+    c.height = 160;
+    const g = c.getContext("2d")!;
+    g.clearRect(0, 0, 768, 160);
+    g.font = "700 78px Palatino, serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.lineJoin = "round";
+    g.strokeStyle = "rgba(13, 20, 24, 0.92)";
+    g.lineWidth = 18;
+    g.strokeText(text, 384, 80);
+    g.fillStyle = color;
+    g.fillText(text, 384, 80);
+    tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    HINT_TEX.set(key, tex);
+  }
+  const s = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  s.scale.set(10.2, 2.15, 1);
+  s.center.set(0.5, 0);
+  s.renderOrder = 9;
+  return s;
+}
+
+function lootStand(tx: number, tz: number): { x: number; z: number } {
+  let best: { x: number; z: number } | null = null;
+  let bestScore = 1e9;
+  for (let a = 0; a < 8; a++) {
+    const ang = (a / 8) * Math.PI * 2;
+    const px = tx + Math.sin(ang) * 1.45 * UNIT;
+    const pz = tz + Math.cos(ang) * 1.45 * UNIT;
+    if (!walkClear(px, pz)) continue;
+    if (Math.hypot(px - tx, pz - tz) > PICKUP_RANGE) continue;
+    const score = pz * 1000 + px;
+    if (score < bestScore) {
+      bestScore = score;
+      best = { x: px, z: pz };
+    }
+  }
+  return best ?? nearestClearPoint(tx, tz);
+}
+
+const LOOT_GLOW = 0xd4a017;
+const RELOAD_GLOW = 0x7ec8e3;
+const OUTLINE_RELOAD_DIM = new THREE.Color(0x2a6a88);
+const OUTLINE_RELOAD_HOT = new THREE.Color(0xb8eefc);
+
+function xrayMat(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: LOOT_GLOW,
+    transparent: true,
+    opacity: 0.45,
+    depthTest: true,
+    depthFunc: THREE.GreaterDepth,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+}
+
+const OUTLINE_DIM = new THREE.Color(0x8a6410);
+const OUTLINE_HOT = new THREE.Color(0xfff4b0);
+
+function outlineMat(): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color: 0xffd24a,
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.9,
+    depthTest: true,
+    depthWrite: false,
+  });
+}
+
+function isLootFx(obj: THREE.Object3D): boolean {
+  return !!(obj.userData.isXray || obj.userData.isOutline);
+}
+
+function shineOutline(obj: THREE.Object3D, wave: number, tint: "loot" | "reload" = "loot") {
+  const on = wave > 0.001;
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || isLootFx(mesh)) return;
+    const prev = mesh.userData.outline as THREE.Object3D | undefined;
+    if (prev instanceof THREE.LineSegments) {
+      mesh.remove(prev);
+      mesh.userData.outline = undefined;
+    }
+    if (!mesh.userData.outline) {
+      const outline = new THREE.Mesh(mesh.geometry, outlineMat());
+      outline.userData.isOutline = true;
+      outline.frustumCulled = false;
+      outline.renderOrder = 6;
+      mesh.add(outline);
+      mesh.userData.outline = outline;
+    }
+    const outline = mesh.userData.outline as THREE.Mesh;
+    outline.visible = on;
+    if (!on) return;
+    outline.scale.setScalar(1.05 + 0.1 * wave);
+    const mat = outline.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.4 + 0.6 * wave;
+    const dim = tint === "reload" ? OUTLINE_RELOAD_DIM : OUTLINE_DIM;
+    const hot = tint === "reload" ? OUTLINE_RELOAD_HOT : OUTLINE_HOT;
+    mat.color.copy(dim).lerp(hot, wave);
+  });
+}
+
+function glowLoot(obj: THREE.Object3D, amount: number, color = LOOT_GLOW) {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || isLootFx(mesh)) return;
+    if (!mesh.userData.xray) {
+      const xray = new THREE.Mesh(mesh.geometry, xrayMat());
+      xray.userData.isXray = true;
+      xray.frustumCulled = false;
+      xray.renderOrder = 8;
+      mesh.add(xray);
+      mesh.userData.xray = xray;
+    }
+    const xray = mesh.userData.xray as THREE.Mesh;
+    const on = amount > 0.001;
+    xray.visible = on;
+    if (on) {
+      const mat = xray.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.08 + amount * 0.18;
+      mat.color.setHex(color);
+    }
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      const mat = m as THREE.MeshLambertMaterial;
+      if (!mat.emissive) continue;
+      if (!on) {
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0;
+      } else {
+        mat.emissive.setHex(color);
+        mat.emissiveIntensity = amount;
+      }
+    }
+  });
+}
+
+function rollContainer(kind: LootKind, island: IslandId): ContainerLoot {
+  if (kind === "chest") return { trophy: rollTrophy("ship", island) };
+  if (kind === "trophy-chest") return { trophy: rollTrophy("chest", island) };
   if (kind === "lockbox") {
+    const n = Math.random();
     if (n < 0.55) return { weapon: "musket", ammo: MUSKET_AMMO };
     if (n < 0.8) return { weapon: "flintlock", ammo: FLINT_AMMO };
-    return { trophy: "junk" };
+    return { trophy: rollTrophy("t2", island) };
   }
   if (kind === "crate") {
-    if (n < 0.5) return { weapon: "flintlock", ammo: FLINT_AMMO };
-    if (n < 0.8) return { weapon: "musket", ammo: MUSKET_AMMO };
-    return { ammo: 4 };
+    if (Math.random() < 0.55) return { weapon: "flintlock", ammo: FLINT_AMMO };
+    return { weapon: "musket", ammo: MUSKET_AMMO };
   }
-  if (n < 0.4) return { weapon: "flintlock", ammo: FLINT_AMMO };
-  if (n < 0.65) return { rum: true };
-  if (n < 0.85) return { ammo: 3 };
-  if (n < 0.9) return { trophy: "junk" };
+  if (kind === "barrel") return { trophy: rollTrophy("t1", island) };
   return {};
+}
+
+function pickIds(ids: string[], n: number): Set<string> {
+  const list = [...ids];
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const a = list[i]!;
+    list[i] = list[j]!;
+    list[j] = a;
+  }
+  return new Set(list.slice(0, Math.min(n, list.length)));
 }
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
+  private camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1500);
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0 };
-  private aim = { x: 0, z: 0 };
   private player!: Fighter;
   private dummies: Fighter[] = [];
   private containers: LootBox[] = [];
   private ground: GroundItem[] = [];
-  private extractMats: THREE.MeshLambertMaterial[] = [];
+  private extractGlows: ExtractGlow[] = [];
+  private extractHints: { id: "gull" | "wren" | "bell"; sprite: THREE.Sprite }[] = [];
   private roofs: Roof[] = [];
   private ships: NavyShip[] = [];
   private elapsed = 0;
@@ -177,31 +480,75 @@ export class Game {
   private lastHit = -10;
   private toastUntil = 0;
   private toast = "";
-  private mode: "play" | "extracted" | "over" = "play";
-  private junkStash = 0;
+  private extractToastDismissed = false;
+  private navyStingAt = -1;
+  private mode: "select" | "play" | "extracted" | "over" = "select";
+  private overlayView: "summary" | "select" | "craft" = "select";
+  private craftFocus: SkinId | null = null;
+  private ready = false;
+  private stash: Partial<Record<TrophyId, number>> = {};
   private extractedTrophy: TrophyId | null = null;
-  private colorway = false;
+  private owned = new Set<SkinId>();
+  private equipped: SkinId | null = null;
+  private pickedPirate: PirateId = "rustbeard";
+  private island: IslandId = 1;
+  private unlocked: IslandId = 1;
+  private extractedFrom: IslandId = 1;
+  private trophyTex = new Map<TrophyId, THREE.Texture>();
   private just = new Set<string>();
   private raycaster = new THREE.Raycaster();
-  private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private playerAim!: AimWedge;
+  private playerAim!: RangeRing;
   private inspect: Fighter | null = null;
   private look = { x: 0, z: 0 };
   private camBlend = 0;
+  private camYaw = Math.PI / 4;
+  private camZoom = 40 * MAP;
+  private camZoomWant = 40 * MAP;
+  private pinchY: number | null = null;
+  private pinchZoom = 1;
   private shake = 0;
+  private hpHealFrom = PLAYER_HP;
+  private hpHealAt = -99;
 
   constructor(root: HTMLElement) {
-    this.scene.background = new THREE.Color(0x0d1418);
-    this.scene.fog = new THREE.Fog(0x0d1418, 70, 160);
+    const save = loadProgress();
+    this.stash = save.stash;
+    this.owned = new Set(UNLOCK_ALL_SKINS ? CRAFT_SKINS : save.owned);
+    if (UNLOCK_ALL_SKINS) for (const id of save.owned) this.owned.add(id);
+    this.equipped = save.equipped && this.owned.has(save.equipped) ? save.equipped : null;
+    this.pickedPirate = save.pirate;
+    this.island = save.island;
+    this.unlocked = save.unlocked;
+    this.scene.background = new THREE.Color(ISLANDS[this.island].sky);
+    this.scene.fog = new THREE.Fog(ISLANDS[this.island].fog, 110, 280);
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     root.appendChild(this.renderer.domElement);
-    const harbor = buildHarbor(this.scene);
-    this.extractMats = harbor.extractMats;
+    const harbor = buildHarbor(this.scene, this.island);
+    this.extractGlows = harbor.extractGlows;
     this.roofs = harbor.roofs;
     this.ships = harbor.ships;
+    this.placeExtractHints();
     placeNavyShips(this.ships, 0);
-    this.playerAim = new AimWedge(this.scene, true);
+    this.playerAim = new RangeRing(this.scene, true);
+    this.bind();
+    this.applyHudSkin();
+    this.resize();
+    this.camera.position.set(40, 52, 40);
+    this.camera.lookAt(0, 0.5 * UNIT, 0);
+    this.last = performance.now();
+    requestAnimationFrame(this.frame);
+    void this.boot();
+  }
+
+  private async boot() {
+    try {
+      await loadArt();
+    } catch (err) {
+      console.error("voxel art failed to load", err);
+    }
+    placeDecor(this.scene);
+    dressHarbor(this.scene, this.roofs, this.ships);
     this.placeLoot();
     this.spawnPlayer(2);
     this.spawnDummy(0, 0x4a7c59);
@@ -211,28 +558,91 @@ export class Game {
     this.spawnDummy(5, 0x2e6b5a);
     this.spawnDummy(6, 0x6a4a7c);
     this.spawnDummy(7, 0x4a4a7c);
-    this.bind();
-    this.resize();
-    this.last = performance.now();
-    requestAnimationFrame(this.frame);
+    this.ready = true;
+    this.showSelect();
   }
 
   private bind() {
     addEventListener("resize", () => this.resize());
     addEventListener("keydown", (e) => {
       const k = e.key.toLowerCase();
-      if (!e.repeat && !this.keys.has(k)) this.just.add(k);
-      this.keys.add(k);
+      if (e.code === "Space" || k === " ") e.preventDefault();
+      const key = e.code === "Space" ? " " : k;
+      if (!e.repeat && !this.keys.has(key)) this.just.add(key);
+      this.keys.add(key);
+      if (k === "escape") {
+        if (this.craftFocus) {
+          this.closeCraftPop();
+          return;
+        }
+        if (
+          this.overlayView === "craft" &&
+          !document.getElementById("overlay")!.classList.contains("hidden")
+        ) {
+          this.showSelect();
+        }
+      }
       if (k === "r") {
-        unlockAudio();
-        this.resetMatch();
+        if (!this.player) return;
+        if (this.mode !== "play" || !this.player.alive) {
+          unlockAudio();
+          const overlayHidden = document.getElementById("overlay")!.classList.contains("hidden");
+          if (!overlayHidden && this.overlayView === "craft") this.showSelect();
+          else if (!overlayHidden && this.overlayView === "select") this.startMatch();
+          else this.showSelect();
+        }
       }
       if ((k === "q" || k === "1" || k === "2") && !e.repeat) {
         this.cycleHands(k);
       }
     });
     addEventListener("keyup", (e) => this.keys.delete(e.key.toLowerCase()));
+    addEventListener("contextmenu", (e) => {
+      if (e.target === this.renderer.domElement) e.preventDefault();
+    });
+    addEventListener(
+      "wheel",
+      (e) => {
+        const overlay = document.getElementById("overlay");
+        if (overlay && !overlay.classList.contains("hidden") && overlay.contains(e.target as Node)) {
+          return;
+        }
+        e.preventDefault();
+        this.nudgeZoom(e.deltaY, e.deltaMode, e.ctrlKey);
+      },
+      { passive: false },
+    );
+    const canvas = this.renderer.domElement;
+    canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length !== 2) {
+          this.pinchY = null;
+          return;
+        }
+        this.pinchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        this.pinchZoom = this.camZoomWant;
+      },
+      { passive: true },
+    );
+    canvas.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length !== 2 || this.pinchY == null) return;
+        e.preventDefault();
+        const y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        this.camZoomWant = this.clampZoom(this.pinchZoom * Math.exp((y - this.pinchY) * 0.004));
+      },
+      { passive: false },
+    );
+    canvas.addEventListener("touchend", (e) => {
+      if (e.touches.length < 2) this.pinchY = null;
+    });
+    canvas.addEventListener("touchcancel", () => {
+      this.pinchY = null;
+    });
     addEventListener("mousemove", (e) => {
+      if (this.modalOpen()) return;
       this.mouse.x = (e.clientX / innerWidth) * 2 - 1;
       this.mouse.y = -(e.clientY / innerHeight) * 2 + 1;
       this.renderer.domElement.style.cursor = this.pickPirate() ? "pointer" : "default";
@@ -242,10 +652,52 @@ export class Game {
       if (e.button !== 0 || this.mode !== "play") return;
       if (e.target !== this.renderer.domElement) return;
       this.inspect = this.pickPirate();
-      if (this.player.alive) this.tryFire(this.player);
     });
-    document.getElementById("again-btn")!.onclick = () => this.resetMatch();
-    document.getElementById("craft-btn")!.onclick = () => this.craft();
+    document.getElementById("again-btn")!.onclick = () => {
+      unlockAudio();
+      if (this.overlayView === "select") this.startMatch();
+      else this.showSelect();
+    };
+    document.getElementById("extract-toast-close")!.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.extractToastDismissed = true;
+      this.syncExtractToast();
+    };
+    document.getElementById("island-picks")!.onclick = (e) => {
+      const btn = (e.target as HTMLElement).closest("button[data-island]") as HTMLButtonElement | null;
+      if (!btn) return;
+      const n = Number(btn.getAttribute("data-island"));
+      if (!isIslandId(n) || n > this.unlocked) return;
+      this.island = n;
+      this.rebuildIsland();
+      this.renderIslands();
+      this.persist();
+    };
+    document.getElementById("owned-skins")!.onclick = (e) => {
+      const pirateBtn = (e.target as HTMLElement).closest("button[data-pick-pirate]");
+      if (pirateBtn) {
+        this.equipPirate(pirateBtn.getAttribute("data-pick-pirate") as PirateId);
+        return;
+      }
+      const btn = (e.target as HTMLElement).closest("button[data-equip]");
+      if (!btn) return;
+      this.equipSkin(btn.getAttribute("data-equip") as SkinId);
+    };
+    document.getElementById("craft-toggle")!.onclick = () => this.showCraft();
+    document.getElementById("craft-back")!.onclick = () => this.showSelect();
+    document.getElementById("craft-list")!.onclick = (e) => {
+      const btn = (e.target as HTMLElement).closest("button[data-craft]") as HTMLButtonElement | null;
+      if (!btn) return;
+      this.openCraftPop(btn.getAttribute("data-craft") as SkinId);
+    };
+    document.getElementById("craft-pop-close")!.onclick = () => this.closeCraftPop();
+    document.getElementById("craft-pop")!.onclick = (e) => {
+      if (e.target === document.getElementById("craft-pop")) this.closeCraftPop();
+    };
+    document.getElementById("craft-pop-btn")!.onclick = () => {
+      if (this.craftFocus) this.craft(this.craftFocus);
+    };
   }
 
   private resize() {
@@ -256,43 +708,96 @@ export class Game {
     this.renderer.setSize(w, h);
   }
 
-  private makeBody(color: number, scale = 1): THREE.Mesh {
-    const g = new THREE.CapsuleGeometry(0.45 * scale, 1.1 * scale, 4, 8);
+  private makeBody(color: number, scale = 1, body?: BodyId): { mesh: THREE.Object3D; rig?: PirateRig } {
+    if (artReady() && body && hasBody(body)) {
+      const rig = makePirate(body);
+      this.scene.add(rig.root);
+      rig.root.userData.base = color;
+      return { mesh: rig.root, rig };
+    }
+    const g = new THREE.CapsuleGeometry(0.45 * scale * UNIT * PIRATE_SCALE, 1.1 * scale * UNIT * PIRATE_SCALE, 4, 8);
     const m = new THREE.MeshLambertMaterial({ color });
     const mesh = new THREE.Mesh(g, m);
     this.scene.add(mesh);
     mesh.userData.base = color;
-    return mesh;
+    return { mesh };
   }
 
   private makeMarker(color: number): THREE.Mesh {
     const mesh = new THREE.Mesh(
-      new THREE.TorusGeometry(0.92, 0.08, 8, 28),
+      new THREE.TorusGeometry(0.92 * UNIT * PIRATE_SCALE, 0.08 * UNIT * PIRATE_SCALE, 8, 28),
       new THREE.MeshBasicMaterial({
         color,
         transparent: true,
         opacity: 0.92,
-        depthTest: false,
+        depthTest: true,
+        depthWrite: false,
       }),
     );
     mesh.rotation.x = -Math.PI / 2;
-    mesh.renderOrder = 8;
+    mesh.renderOrder = 2;
     this.scene.add(mesh);
     return mesh;
   }
 
+  private makeHpPip(): THREE.Mesh {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2 * UNIT * PIRATE_SCALE, 0.14 * UNIT * PIRATE_SCALE, 0.14 * UNIT * PIRATE_SCALE),
+      new THREE.MeshBasicMaterial({ color: 0x3dba7c, depthTest: false }),
+    );
+    mesh.renderOrder = 9;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  private makeTrophyIcon(): THREE.Sprite {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        transparent: true,
+        depthTest: true,
+        sizeAttenuation: true,
+      }),
+    );
+    sprite.scale.set(0.7 * UNIT * PIRATE_SCALE, 0.7 * UNIT * PIRATE_SCALE, 1);
+    sprite.visible = false;
+    sprite.renderOrder = 10;
+    this.scene.add(sprite);
+    return sprite;
+  }
+
+  private trophyTexture(id: TrophyId): THREE.Texture {
+    const hit = this.trophyTex.get(id);
+    if (hit) return hit;
+    const tex = new THREE.TextureLoader().load(trophyArt(id));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.trophyTex.set(id, tex);
+    return tex;
+  }
+
   private spawnPlayer(spawnIndex: number) {
-    const s = SPAWNS[spawnIndex];
+    const s = SPAWNS[spawnIndex] ?? SPAWNS[0] ?? { x: 0, z: 0 };
     if (this.player) {
+      this.player.rig?.mixer.stopAllAction();
       this.scene.remove(this.player.mesh);
       if (this.player.marker) this.scene.remove(this.player.marker);
+      if (this.player.hpPip) this.scene.remove(this.player.hpPip);
+      if (this.player.trophyIcon) this.scene.remove(this.player.trophyIcon);
     }
-    const color = this.colorway ? 0x7ec8e3 : 0xe8d5a3;
-    const mesh = this.makeBody(color, 1.12);
+    const skin = this.equipped ? SKINS[this.equipped] : null;
+    const color = skin?.color ?? 0xe8d5a3;
+    const bodyId: BodyId = this.equipped ?? this.pickedPirate;
+    const body = this.makeBody(color, 1.12, bodyId);
     this.player = {
-      mesh,
+      mesh: body.mesh,
+      rig: body.rig,
+      kit: body.rig,
+      pirate: this.pickedPirate,
       x: s.x,
       z: s.z,
+      y: standHeight(s.x, s.z),
+      vy: 0,
+      grounded: true,
+      jumpCool: 0,
       hp: PLAYER_HP,
       yaw: 0,
       primary: null,
@@ -301,6 +806,9 @@ export class Game {
       trophy: null,
       cooldown: 0,
       alive: true,
+      corpse: false,
+      dieT: 0,
+      fallSide: 1,
       dummy: false,
       wanderT: 0,
       tx: s.x,
@@ -312,139 +820,345 @@ export class Game {
       lootReadyAt: 0,
       extractHold: 0,
       nav: emptyNav(),
-      marker: this.makeMarker(this.colorway ? 0x7ec8e3 : 0xd4a017),
+      marker: this.makeMarker(markerColor(skin)),
+      hpPip: this.makeHpPip(),
+      trophyIcon: this.makeTrophyIcon(),
+      px: s.x,
+      pz: s.z,
     };
+    this.paintSkin(this.player);
     this.placeFighter(this.player);
     this.look.x = this.player.x;
     this.look.z = this.player.z;
   }
 
   private spawnDummy(spawnIndex: number, color: number) {
-    const s = SPAWNS[spawnIndex];
-    const mesh = this.makeBody(color, 1);
-    const hpPip = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.14, 0.14),
-      new THREE.MeshBasicMaterial({ color: 0x3dba7c, depthTest: false }),
-    );
-    hpPip.renderOrder = 9;
-    this.scene.add(hpPip);
+    const s = SPAWNS[spawnIndex] ?? SPAWNS[0] ?? { x: 0, z: 0 };
+    const pirate = dummyPirate(spawnIndex);
+    const body = this.makeBody(color, 1, pirate);
     const f: Fighter = {
-      mesh,
+      mesh: body.mesh,
+      rig: body.rig,
+      kit: body.rig,
+      pirate,
       x: s.x,
       z: s.z,
+      y: standHeight(s.x, s.z),
+      vy: 0,
+      grounded: true,
+      jumpCool: 0,
       hp: PLAYER_HP,
       yaw: 0,
       primary: spawnIndex === 7 ? "flintlock" : null,
       bag: null,
       ammo: spawnIndex === 7 ? FLINT_AMMO : 0,
-      trophy: spawnIndex === 7 ? "junk" : null,
+      trophy: spawnIndex === 7 ? "wood" : null,
       cooldown: 1.4,
       alive: true,
+      corpse: false,
+      dieT: 0,
+      fallSide: 1,
       dummy: true,
       wanderT: 0,
       tx: s.x,
       tz: s.z,
       spawnIndex,
       color,
-      aim: new AimWedge(this.scene, false),
-      hpPip,
+      aim: new RangeRing(this.scene, false),
+      hpPip: this.makeHpPip(),
+      trophyIcon: this.makeTrophyIcon(),
       rummage: 0,
       lootReadyAt: spawnIndex === 7 ? 0 : (spawnIndex === 5 ? 1.1 : 1.8 + spawnIndex * 1.5) + Math.random() * 2,
       extractHold: 0,
       nav: emptyNav(),
+      px: s.x,
+      pz: s.z,
     };
     this.dummies.push(f);
     this.placeFighter(f);
   }
 
   private placeLoot() {
-    for (const spot of LOOT_SPOTS) {
-      const h = spot.kind === "barrel" ? 1.15 : 0.85;
-      const geo = new THREE.CylinderGeometry(
-        spot.kind === "barrel" ? 0.55 : 0.7,
-        0.58,
-        h,
-        8,
-      );
+    const spots = allLootSpots();
+    for (const spot of spots) {
+      const { w, d, h } = lootSize(spot.kind);
+      const deck = deckHeight(spot.x, spot.z);
+      const chestId = artReady() ? chestForLoot(spot.kind) : null;
+      let mesh: THREE.Object3D;
+      let chest: ChestRig | undefined;
       const closedColor =
         spot.kind === "chest"
           ? 0xd4a017
-          : spot.kind === "lockbox"
-            ? 0x8a6a2a
-            : spot.kind === "crate"
-              ? 0xc9a227
-              : 0x8b5a2b;
-      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: closedColor }));
-      mesh.position.set(spot.x, 0.4 + h / 2, spot.z);
-      this.scene.add(mesh);
+          : spot.kind === "trophy-chest"
+            ? 0xb8862a
+            : spot.kind === "lockbox"
+              ? 0x8a6a2a
+              : spot.kind === "crate"
+                ? 0xc9a227
+                : 0x8b5a2b;
+      if (chestId) {
+        chest = makeChest(chestId);
+        mesh = chest.root;
+        mesh.position.set(spot.x, deck, spot.z);
+        this.scene.add(mesh);
+      } else if (spot.kind === "barrel" && hasProp("barrel")) {
+        mesh = makeProp("barrel", 1.12 * UNIT);
+        mesh.position.set(spot.x, deck, spot.z);
+        this.scene.add(mesh);
+      } else if (spot.kind === "crate" && hasProp("crate-yellow")) {
+        mesh = makeProp("crate-yellow", 0.88 * UNIT);
+        mesh.position.set(spot.x, deck, spot.z);
+        this.scene.add(mesh);
+      } else if (spot.kind === "crate" && hasProp("crate")) {
+        mesh = makeProp("crate", 0.88 * UNIT);
+        mesh.position.set(spot.x, deck, spot.z);
+        this.scene.add(mesh);
+      } else {
+        const geo =
+          spot.kind === "barrel"
+            ? new THREE.CylinderGeometry(0.55, 0.58, h, 8)
+            : new THREE.BoxGeometry(w, h, d);
+        mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: closedColor }));
+        mesh.position.set(spot.x, deck + h / 2, spot.z);
+        this.scene.add(mesh);
+      }
 
-      const hoop = new THREE.Mesh(
-        new THREE.TorusGeometry(spot.kind === "barrel" ? 0.52 : 0.62, 0.07, 8, 16),
-        new THREE.MeshBasicMaterial({ color: 0xffe08a }),
-      );
-      hoop.rotation.x = Math.PI / 2;
-      hoop.position.set(spot.x, 0.4 + h + 0.08, spot.z);
-      hoop.renderOrder = 4;
-      this.scene.add(hoop);
+      const hintOpen = hintSprite("E to open", "#f4e4a4");
+      this.scene.add(hintOpen);
+      const hintReload =
+        spot.kind === "crate" ? hintSprite("E to reload", "#7ec8e3") : null;
+      if (hintReload) this.scene.add(hintReload);
 
-      this.containers.push({ spot, mesh, hoop, opened: false, closedColor });
+      this.containers.push({
+        spot,
+        mesh,
+        opened: false,
+        closedColor,
+        chest,
+        hintOpen,
+        hintReload,
+        loot: {},
+      });
+    }
+    this.refillContainers();
+  }
+
+  private refillContainers() {
+    const emptyBarrels = pickIds(
+      this.containers.filter((c) => c.spot.kind === "barrel").map((c) => c.spot.id),
+      5,
+    );
+    const emptyCrates = pickIds(
+      this.containers.filter((c) => c.spot.kind === "crate").map((c) => c.spot.id),
+      3,
+    );
+    for (const c of this.containers) {
+      const empty =
+        (c.spot.kind === "barrel" && emptyBarrels.has(c.spot.id)) ||
+        (c.spot.kind === "crate" && emptyCrates.has(c.spot.id));
+      c.loot = empty ? {} : rollContainer(c.spot.kind, this.island);
+      this.syncLootHint(c);
+    }
+  }
+
+  private paintIsland() {
+    const spec = ISLANDS[this.island];
+    this.scene.background = new THREE.Color(spec.sky);
+    const fog = this.scene.fog;
+    if (fog instanceof THREE.Fog) fog.color.setHex(spec.fog);
+  }
+
+  private rebuildIsland() {
+    this.clearGround();
+    this.clearLoot();
+    this.clearExtractHints();
+    const harbor = buildHarbor(this.scene, this.island);
+    this.extractGlows = harbor.extractGlows;
+    this.roofs = harbor.roofs;
+    this.ships = harbor.ships;
+    this.placeExtractHints();
+    if (this.ready) {
+      placeDecor(this.scene);
+      dressHarbor(this.scene, this.roofs, this.ships);
+      this.placeLoot();
+    }
+    if (this.player) this.spawnPlayer(this.player.spawnIndex);
+    for (const d of this.dummies) this.resetDummy(d);
+    placeNavyShips(this.ships, this.elapsed);
+    this.paintIsland();
+  }
+
+  private clearGround() {
+    for (const g of this.ground) {
+      this.scene.remove(g.mesh);
+      if (g.hintPickup) this.scene.remove(g.hintPickup);
+    }
+    this.ground = [];
+  }
+
+  private clearLoot() {
+    for (const c of this.containers) {
+      this.scene.remove(c.mesh);
+      this.scene.remove(c.hintOpen);
+      if (c.hintReload) this.scene.remove(c.hintReload);
+    }
+    this.containers = [];
+  }
+
+  private clearExtractHints() {
+    for (const h of this.extractHints) this.scene.remove(h.sprite);
+    this.extractHints = [];
+  }
+
+  private hintHeight(c: LootBox): number {
+    return deckHeight(c.spot.x, c.spot.z) + lootHeight(c.spot.kind) + 0.22 * UNIT;
+  }
+
+  private syncLootHint(c: LootBox) {
+    const y = this.hintHeight(c);
+    c.hintOpen.visible = !c.opened;
+    c.hintOpen.position.set(c.spot.x, y, c.spot.z);
+    if (c.hintReload) {
+      c.hintReload.visible = c.opened && this.gunNeedsReload(this.player);
+      c.hintReload.position.set(c.spot.x, y, c.spot.z);
+    }
+  }
+
+  private placeExtractHints() {
+    const pads: { id: "gull" | "wren" | "bell"; r: typeof EXTRACT_GULL }[] = [
+      { id: "gull", r: EXTRACT_GULL },
+      { id: "wren", r: EXTRACT_WREN },
+      { id: "bell", r: EXTRACT_BELL },
+    ];
+    for (const pad of pads) {
+      const sprite = hintSprite("Hold E to extract", "#e8c45a");
+      const c = rectCenter(pad.r);
+      sprite.position.set(c.x, extractPadY(pad.r) + 0.42 * UNIT, c.z);
+      sprite.visible = false;
+      this.scene.add(sprite);
+      this.extractHints.push({ id: pad.id, sprite });
     }
   }
 
   private setContainerOpen(c: LootBox, opened: boolean) {
     c.opened = opened;
-    c.hoop.visible = !opened;
-    const mat = c.mesh.material as THREE.MeshLambertMaterial;
+    this.syncLootHint(c);
+    if (opened) glowLoot(c.mesh, 0);
+    if (c.chest) {
+      setChestOpen(c.chest, opened);
+      return;
+    }
+    if (c.mesh.userData.voxelProp) {
+      const deck = deckHeight(c.spot.x, c.spot.z);
+      if (!opened) {
+        c.mesh.rotation.set(0, 0, 0);
+        c.mesh.position.set(c.spot.x, deck, c.spot.z);
+        return;
+      }
+      if (c.spot.kind === "barrel") {
+        c.mesh.rotation.z = Math.PI / 2;
+        c.mesh.position.set(c.spot.x, deck + 0.12 * UNIT, c.spot.z);
+      } else {
+        c.mesh.rotation.x = 0.45;
+        c.mesh.position.set(c.spot.x, deck + 0.08 * UNIT, c.spot.z);
+      }
+      return;
+    }
+    const mesh = c.mesh as THREE.Mesh;
+    const mat = mesh.material as THREE.MeshLambertMaterial;
     if (!opened) {
       mat.color.setHex(c.closedColor);
-      c.mesh.rotation.set(0, 0, 0);
-      c.mesh.scale.set(1, 1, 1);
-      const h = c.spot.kind === "barrel" ? 1.15 : 0.85;
-      c.mesh.position.set(c.spot.x, 0.4 + h / 2, c.spot.z);
+      mesh.rotation.set(0, 0, 0);
+      mesh.scale.set(1, 1, 1);
+      const h = lootHeight(c.spot.kind);
+      mesh.position.set(c.spot.x, 0.4 + h / 2, c.spot.z);
       return;
     }
     mat.color.setHex(0x3a322c);
     if (c.spot.kind === "barrel") {
-      c.mesh.rotation.z = Math.PI / 2;
-      c.mesh.position.set(c.spot.x, 0.58, c.spot.z);
+      mesh.rotation.z = Math.PI / 2;
+      mesh.position.set(c.spot.x, 0.58 * UNIT, c.spot.z);
     } else {
-      c.mesh.rotation.x = 0.55;
-      c.mesh.scale.set(1, 0.38, 1);
-      c.mesh.position.set(c.spot.x, 0.52, c.spot.z);
+      mesh.rotation.x = 0.55;
+      mesh.scale.set(1, 0.38, 1);
+      mesh.position.set(c.spot.x, 0.52 * UNIT, c.spot.z);
     }
   }
 
   private placeFighter(f: Fighter) {
-    const h = f.dummy ? 1.1 : 1.22;
-    f.mesh.position.set(f.x, h, f.z);
-    f.mesh.rotation.y = f.yaw;
-    f.mesh.visible = f.alive;
+    const shown = f.alive || f.corpse;
+    f.mesh.position.set(f.x, this.bodyY(f), f.z);
+    f.mesh.rotation.y = f.yaw + (f.rig ? PIRATE_YAW : 0);
+    f.mesh.visible = shown;
     if (f.marker) {
       f.marker.visible = f.alive;
-      f.marker.position.set(f.x, deckHeight(f.x, f.z) + 0.12, f.z);
+      f.marker.position.set(f.x, f.y + 0.12 * UNIT * PIRATE_SCALE, f.z);
     }
+    if (f.kit) showHeld(f.kit, f.primary, f.alive);
     if (f.hpPip) {
       const ratio = Math.max(0, f.hp / PLAYER_HP);
-      f.hpPip.visible = f.alive;
-      f.hpPip.position.set(f.x, 2.35, f.z);
+      f.hpPip.visible = f.alive && f.hp < PLAYER_HP;
+      f.hpPip.position.set(f.x, f.y + 2.15 * UNIT * PIRATE_SCALE, f.z);
       f.hpPip.scale.set(Math.max(0.06, ratio), 1, 1);
       (f.hpPip.material as THREE.MeshBasicMaterial).color.setHex(
         ratio > 0.45 ? 0x3dba7c : ratio > 0.2 ? 0xd4a017 : 0xc45c3e,
       );
     }
+    if (f.trophyIcon) {
+      const held = f.alive && !!f.trophy;
+      f.trophyIcon.visible = held;
+      f.trophyIcon.position.set(f.x, f.y + 2.62 * UNIT * PIRATE_SCALE, f.z);
+      if (held && f.trophy) {
+        const mat = f.trophyIcon.material;
+        if (mat.map !== this.trophyTexture(f.trophy)) {
+          mat.map = this.trophyTexture(f.trophy);
+          mat.needsUpdate = true;
+        }
+      }
+    }
+  }
+
+  private posePirate(f: Fighter, dt: number) {
+    if (f.rig) {
+      const moved = Math.hypot(f.x - f.px, f.z - f.pz);
+      f.px = f.x;
+      f.pz = f.z;
+      const step = PLAYER_SPEED * dt;
+      const speed = moved > step * 0.3 ? moved / Math.max(dt, 1e-4) : 0;
+      if (f.corpse) {
+        f.dieT += dt;
+        tickPirateDie(f.rig, f.dieT, f.fallSide);
+      } else if (f.alive) playPirate(f.rig, speed, f.grounded);
+      f.rig.mixer.update(dt);
+      f.rig.root.updateWorldMatrix(true, true);
+    }
+    if (f.kit) poseHeld(f.kit, f.primary, dt);
+    else if (f.corpse) {
+      f.dieT += dt;
+      const e = deathEase(f.dieT);
+      f.mesh.rotation.x = -e * 1.42;
+      f.mesh.rotation.z = f.fallSide * e * 0.48;
+    }
+  }
+
+  private bodyY(f: Fighter): number {
+    if (f.rig) return f.y + (f.corpse ? pirateDeathLift(f.dieT) : 0);
+    const half = bodyHalf(f);
+    if (!f.corpse) return f.y + half;
+    const e = deathEase(f.dieT);
+    const ang = e * (Math.PI / 2);
+    return f.y + half * Math.cos(ang) + 0.45 * UNIT * PIRATE_SCALE * Math.sin(ang);
   }
 
   private syncAim(f: Fighter) {
     f.aim.update({
       x: f.x,
       z: f.z,
-      yaw: f.yaw,
       primary: f.primary,
       ammo: f.ammo,
       cooldown: f.cooldown,
       alive: f.alive && this.mode === "play",
       color: f.color,
-      landDist: f.dummy ? undefined : Math.hypot(this.aim.x - f.x, this.aim.z - f.z),
     });
   }
 
@@ -472,6 +1186,7 @@ export class Game {
   }
 
   private cycleHands(k: string) {
+    if (!this.player) return;
     const p = this.player;
     if (!p.alive || this.mode !== "play") return;
     if (k === "1" || (k === "q" && p.primary)) {
@@ -482,41 +1197,77 @@ export class Game {
   }
 
   private tryMove(f: Fighter, nx: number, nz: number) {
-    if (isWalkable(nx, f.z)) f.x = nx;
-    if (isWalkable(f.x, nz)) f.z = nz;
+    if (isWalkable(nx, f.z) && !coverBlocked(nx, f.z, f.y)) f.x = nx;
+    if (isWalkable(f.x, nz) && !coverBlocked(f.x, nz, f.y)) f.z = nz;
+  }
+
+  private tryJump(f: Fighter) {
+    if (!f.alive || !f.grounded) return;
+    f.vy = JUMP_VEL;
+    f.grounded = false;
+    f.jumpCool = 0.55;
+  }
+
+  private tickAir(f: Fighter, dt: number) {
+    if (!f.alive) return;
+    f.jumpCool = Math.max(0, f.jumpCool - dt);
+    const g = standHeight(f.x, f.z);
+    if (f.grounded && f.vy <= 0) {
+      if (f.y <= g + 0.1) {
+        f.y = g;
+        f.vy = 0;
+        return;
+      }
+      f.grounded = false;
+    }
+    f.grounded = false;
+    f.vy -= GRAVITY * dt;
+    f.y += f.vy * dt;
+    if (f.y <= g && f.vy <= 0) {
+      f.y = g;
+      f.vy = 0;
+      f.grounded = true;
+    }
   }
 
   private wasdAxis(): { mx: number; mz: number } {
+    const yaw = this.pointerYaw();
+    const s = Math.sin(yaw);
+    const c = Math.cos(yaw);
     let mx = 0;
     let mz = 0;
     if (this.keys.has("w") || this.keys.has("arrowup")) {
-      mx -= 1;
-      mz -= 1;
+      mx -= s;
+      mz -= c;
     }
     if (this.keys.has("s") || this.keys.has("arrowdown")) {
-      mx += 1;
-      mz += 1;
+      mx += s;
+      mz += c;
     }
     if (this.keys.has("a") || this.keys.has("arrowleft")) {
-      mx -= 1;
-      mz += 1;
+      mx -= c;
+      mz += s;
     }
     if (this.keys.has("d") || this.keys.has("arrowright")) {
-      mx += 1;
-      mz -= 1;
+      mx += c;
+      mz -= s;
     }
     return { mx, mz };
   }
 
   private wasdMove(p: Fighter, dt: number) {
+    if (this.just.has(" ") || this.just.has("space")) this.tryJump(p);
     const { mx, mz } = this.wasdAxis();
-    if (!mx && !mz) return;
-    const len = Math.hypot(mx, mz);
-    this.tryMove(
-      p,
-      p.x + (mx / len) * PLAYER_SPEED * dt,
-      p.z + (mz / len) * PLAYER_SPEED * dt,
-    );
+    if (mx || mz) {
+      const len = Math.hypot(mx, mz);
+      p.yaw = Math.atan2(mx, mz);
+      this.tryMove(
+        p,
+        p.x + (mx / len) * PLAYER_SPEED * dt,
+        p.z + (mz / len) * PLAYER_SPEED * dt,
+      );
+    }
+    this.tickAir(p, dt);
   }
 
   private wasdSpectate(dt: number) {
@@ -524,8 +1275,8 @@ export class Game {
     if (!mx && !mz) return;
     const len = Math.hypot(mx, mz);
     const speed = PLAYER_SPEED * 2.4;
-    this.look.x = Math.max(-90, Math.min(78, this.look.x + (mx / len) * speed * dt));
-    this.look.z = Math.max(-62, Math.min(62, this.look.z + (mz / len) * speed * dt));
+    this.look.x = Math.max(-120 * MAP, Math.min(110 * MAP, this.look.x + (mx / len) * speed * dt));
+    this.look.z = Math.max(-90 * MAP, Math.min(90 * MAP, this.look.z + (mz / len) * speed * dt));
   }
 
   private rivals(f: Fighter): Fighter[] {
@@ -535,70 +1286,43 @@ export class Game {
 
   private canSee(a: Fighter, b: Fighter): boolean {
     const dist = Math.hypot(b.x - a.x, b.z - a.z);
-    if (dist < 1.2) return true;
-    return !blockedByWall(a.x, a.z, (b.x - a.x) / dist, (b.z - a.z) / dist, dist - 0.4);
+    if (dist < 1.2 * UNIT) return true;
+    return !blockedByWall(a.x, a.z, (b.x - a.x) / dist, (b.z - a.z) / dist, dist - 0.4 * UNIT);
   }
 
   private shotRange(f: Fighter): number {
     return weaponReach(f.primary).range;
   }
 
-  private inPie(f: Fighter, t: Fighter): boolean {
+  private inReach(f: Fighter, t: Fighter): boolean {
     if (!t.alive) return false;
-    const { range, half } = weaponReach(f.primary);
+    const { range, melee } = weaponReach(f.primary);
     const ex = t.x - f.x;
     const ez = t.z - f.z;
     const dist = Math.hypot(ex, ez);
-    if (dist > range || dist < 0.15) return false;
-    const dx = Math.sin(f.yaw);
-    const dz = Math.cos(f.yaw);
-    return (ex * dx + ez * dz) / dist >= Math.cos(half);
-  }
-
-  private nearestShot(f: Fighter): Fighter | null {
-    const shot = this.shotRange(f);
-    let best: Fighter | null = null;
-    let bestD = shot + 0.01;
-    for (const o of this.rivals(f)) {
-      const d = Math.hypot(o.x - f.x, o.z - f.z);
-      if (d >= bestD || d > shot) continue;
-      if (!this.canSee(f, o)) continue;
-      if (f.primary && f.ammo <= 0) continue;
-      bestD = d;
-      best = o;
+    if (dist > range || dist < 0.15 * UNIT) return false;
+    if (dist > 1.2 * UNIT && blockedByWall(f.x, f.z, ex / dist, ez / dist, dist - HIT_RADIUS)) {
+      return false;
     }
-    return best;
+    if (!melee && !this.canSee(f, t)) return false;
+    return true;
   }
 
-  /** Player already in the pie or on top of us. Other pirates are ignored. */
+  private reachHits(f: Fighter): Fighter[] {
+    return this.rivals(f).filter((t) => {
+      if (!this.inReach(f, t)) return false;
+      if (f.dummy && t.dummy && Math.hypot(t.x - f.x, t.z - f.z) > DUMMY_NEAR) return false;
+      return true;
+    });
+  }
+
+  /** Player inside this pirate's attack circle, or standing on them. */
   private contactThreat(d: Fighter): Fighter | null {
     const p = this.player;
     if (!p.alive) return null;
     const dist = Math.hypot(p.x - d.x, p.z - d.z);
-    if (dist < 5.2 || this.inPie(d, p)) return p;
+    if (dist < 2.4 * UNIT || this.inReach(d, p)) return p;
     return null;
-  }
-
-  /** Fire if another bot is close. Do not chase. Skip if the player is already on us. */
-  private dummyShootNearby(d: Fighter) {
-    if (!d.alive) return;
-    if (this.contactThreat(d)) return;
-    const reach = Math.min(this.shotRange(d), DUMMY_NEAR);
-    let best: Fighter | null = null;
-    let bestD = reach + 0.01;
-    for (const o of this.dummies) {
-      if (o === d || !o.alive) continue;
-      const dist = Math.hypot(o.x - d.x, o.z - d.z);
-      if (dist > reach || dist < 0.15) continue;
-      if (!this.canSee(d, o)) continue;
-      if (dist < bestD) {
-        bestD = dist;
-        best = o;
-      }
-    }
-    if (!best) return;
-    d.yaw = Math.atan2(best.x - d.x, best.z - d.z);
-    this.tryFire(d);
   }
 
   private dummyJob(d: Fighter): "hunt" | "seal" | "loot" {
@@ -607,51 +1331,48 @@ export class Game {
     return "loot";
   }
 
-  private tryFire(f: Fighter) {
+  /** Swing or shoot on cooldown whenever someone is inside the radius. */
+  private autoAttack(f: Fighter) {
     if (!f.alive || f.cooldown > 0 || this.mode !== "play") return;
-    if (!f.dummy) {
-      this.updateAim();
-      f.yaw = Math.atan2(this.aim.x - f.x, this.aim.z - f.z);
-      this.syncAim(f);
-    }
+    const { melee } = weaponReach(f.primary);
+    if (!melee && f.ammo <= 0) return;
+    const hits = this.reachHits(f);
+    if (!hits.length) return;
 
-    const { range, half, melee } = weaponReach(f.primary);
+    hits.sort((a, b) => Math.hypot(a.x - f.x, a.z - f.z) - Math.hypot(b.x - f.x, b.z - f.z));
+    const focus = hits[0];
+    f.yaw = Math.atan2(focus.x - f.x, focus.z - f.z);
+    const targets = melee ? hits : [focus];
+
     if (!melee) {
-      if (f.ammo <= 0) {
-        if (!f.dummy) this.flash("Empty. Find a barrel.");
-        return;
-      }
       f.ammo -= 1;
       f.cooldown = f.primary === "musket" ? 1.15 : 0.55;
     } else {
       f.cooldown = f.dummy ? DUMMY_MELEE_COOLDOWN : MELEE_COOLDOWN;
     }
     f.aim.pulse();
-    if (melee) sfxSwing();
-    else sfxShot(f.primary === "musket");
+    const hear = !f.dummy || targets.some((t) => !t.dummy)
+      ? 1
+      : combatGain(Math.hypot(f.x - this.player.x, f.z - this.player.z));
+    if (melee) {
+      if (hear) sfxSwing(hear);
+      if (f.rig) pirateSwing(f.rig, f.dummy ? DUMMY_MELEE_COOLDOWN : MELEE_COOLDOWN);
+    } else {
+      if (hear) sfxShot(f.primary === "musket", hear);
+      if (f.rig) weaponBoom(f.rig);
+      if (!f.dummy) this.shake = Math.max(this.shake, 0.34);
+    }
 
-    const dx = Math.sin(f.yaw);
-    const dz = Math.cos(f.yaw);
-    const cone = Math.cos(half);
-    const targets = this.rivals(f);
     for (const t of targets) {
-      const ex = t.x - f.x;
-      const ez = t.z - f.z;
-      const dist = Math.hypot(ex, ez);
-      if (dist > range || dist < 0.15) continue;
-      const dir = dist < 0.001 ? 1 : (ex * dx + ez * dz) / dist;
-      if (dir < cone) continue;
-      if (dist > 1.2 && blockedByWall(f.x, f.z, ex / dist, ez / dist, dist - HIT_RADIUS)) {
-        continue;
-      }
+      const dist = Math.hypot(t.x - f.x, t.z - f.z);
       const fall =
-        melee || dist < 8
+        melee || dist < 8 * UNIT
           ? 1
           : f.primary === "musket"
-            ? dist > 22
+            ? dist > 22 * UNIT
               ? 1
               : 0.55
-            : dist > 22
+            : dist > 22 * UNIT
               ? 0.45
               : 1;
       const dmg = melee
@@ -662,8 +1383,7 @@ export class Game {
           ? (f.dummy ? DUMMY_MUSKET_DAMAGE : MUSKET_DAMAGE) * fall
           : (f.dummy ? DUMMY_FLINT_DAMAGE : FLINT_DAMAGE) * fall;
       this.hurt(t, dmg, f);
-      if (t.dummy) sfxHit();
-      if (melee) break;
+      if (t.dummy && hear && melee) sfxHit(hear);
     }
   }
 
@@ -673,34 +1393,50 @@ export class Game {
       this.lastHit = this.elapsed;
       this.shake = 0.55;
       sfxHurt();
+      this.clearHpHeal();
       document.getElementById("hp-wrap")?.classList.add("hurt");
       setTimeout(() => document.getElementById("hp-wrap")?.classList.remove("hurt"), 140);
     }
     if (t.dummy) t.extractHold = 0;
-    t.mesh.material = new THREE.MeshLambertMaterial({ color: 0xaa3333 });
-    const restore = t.color;
-    setTimeout(() => {
-      if (t.alive) {
-        (t.mesh.material as THREE.MeshLambertMaterial).color.setHex(restore);
-      }
-    }, 160);
+    if (t.rig) {
+      flashPirate(t.mesh, true);
+      setTimeout(() => flashPirate(t.mesh, false), t.hp <= 0 ? 480 : 160);
+    } else {
+      const mesh = t.mesh as THREE.Mesh;
+      mesh.material = new THREE.MeshLambertMaterial({ color: 0xaa3333 });
+      const restore = t.color;
+      setTimeout(() => {
+        if (t.alive) {
+          (mesh.material as THREE.MeshLambertMaterial).color.setHex(restore);
+        }
+      }, 160);
+    }
     if (t.hp <= 0) this.kill(t, by);
   }
 
   private kill(t: Fighter, _by: Fighter) {
     t.alive = false;
+    t.corpse = true;
+    t.dieT = 0;
+    t.fallSide = Math.sin(Math.atan2(t.x - _by.x, t.z - _by.z) - t.yaw) >= 0 ? 1 : -1;
     t.hp = 0;
-    t.mesh.visible = false;
     t.aim.setVisible(false);
     if (t.hpPip) t.hpPip.visible = false;
-    this.dropFrom(t);
+    if (t.trophyIcon) t.trophyIcon.visible = false;
     if (t.marker) t.marker.visible = false;
-    sfxKill();
-    if (!t.dummy) this.flash("You have died. WASD to watch the harbor. R restarts.");
+    if (t.rig) pirateDie(t.rig);
+    this.dropFrom(t);
+    const hear = combatGain(Math.hypot(t.x - this.player.x, t.z - this.player.z));
+    if (hear) sfxKill(t.dummy ? hear : 1);
+    if (!t.dummy) this.flash("You have died");
+    else if (!_by.dummy) {
+      const name = t.pirate ? PIRATE_NAMES[t.pirate] : pirateCoat(t.color);
+      this.flash(`Killed ${name}`);
+    }
   }
 
   private dropFrom(t: Fighter) {
-    const jitter = () => (Math.random() - 0.5) * 1.6;
+    const jitter = () => (Math.random() - 0.5) * 1.6 * UNIT;
     const gun = t.primary ?? t.bag;
     if (gun) this.spawnGround(t.x + jitter(), t.z + jitter(), { weapon: gun, ammo: t.ammo });
     if (t.trophy) this.spawnGround(t.x + jitter(), t.z + jitter(), { trophy: t.trophy });
@@ -715,44 +1451,68 @@ export class Game {
     z: number,
     item: { weapon?: WeaponId; ammo?: number; trophy?: TrophyId },
   ) {
-    const color = item.trophy === "keep-seal" ? 0xd4a017 : item.trophy ? 0xb8a078 : 0x8899aa;
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.35, 8, 6),
-      new THREE.MeshLambertMaterial({ color }),
+    const y = deckHeight(x, z) + 0.95 * UNIT;
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: item.trophy ? this.trophyTexture(item.trophy) : weaponTexture(item.weapon ?? null),
+        transparent: true,
+        depthTest: true,
+      }),
     );
-    mesh.position.set(x, 0.7, z);
-    this.scene.add(mesh);
-    this.ground.push({ mesh, x, z, ...item });
+    sprite.scale.set(1.25 * UNIT, 1.25 * UNIT, 1);
+    sprite.position.set(x, y, z);
+    sprite.renderOrder = 7;
+    this.scene.add(sprite);
+    const hintPickup =
+      item.weapon || item.trophy ? hintSprite("F to pick up", "#f4e4a4") : null;
+    if (hintPickup) {
+      hintPickup.position.set(x, y + 0.72 * UNIT, z);
+      this.scene.add(hintPickup);
+    }
+    this.ground.push({ mesh: sprite, x, z, hintPickup, ...item });
   }
 
   private interact(dt: number) {
     const p = this.player;
     if (!p.alive) {
       document.getElementById("prompt")!.textContent =
-        "Spectating — WASD pan the harbor · click a pirate for their kit · R restart";
+        "Spectating — click a pirate for their kit · R restart";
       return;
     }
     const holding = this.keys.has("e");
     const zone = extractZone(this.phase(), p.x, p.z);
     let prompt = "";
 
-    const nearBarrel = this.containers.find(
+    const nearCrate = this.containers.find(
       (c) =>
-        c.spot.kind === "barrel" &&
+        c.spot.kind === "crate" &&
         Math.hypot(c.spot.x - p.x, c.spot.z - p.z) < PICKUP_RANGE,
     );
     const nearC = this.containers.find(
       (c) =>
         !c.opened &&
-        c.spot.kind !== "barrel" &&
+        c.spot.kind !== "crate" &&
         Math.hypot(c.spot.x - p.x, c.spot.z - p.z) < PICKUP_RANGE,
     );
     const nearG = this.ground.find(
       (g) => Math.hypot(g.x - p.x, g.z - p.z) < PICKUP_RANGE,
     );
 
+    if (this.just.has("f") && nearG) this.takeGround(nearG);
+    if (!zone && this.just.has("e")) {
+      if (nearCrate && !nearCrate.opened) this.openContainer(nearCrate);
+      else if (nearC) this.openContainer(nearC);
+      else if (
+        nearCrate?.opened &&
+        (p.primary === "flintlock" || p.primary === "musket")
+      ) {
+        this.refillAmmo(p);
+      }
+    }
+
     if (zone) {
       prompt = `Hold E — extract on ${zone === "bell" ? "Fort Bell" : zone === "gull" ? "The Gull" : "The Wren"}`;
+      if (nearG) prompt += " · F pick up";
       if (holding) {
         if (this.elapsed - this.lastHit < 0.35) {
           this.channel = 0;
@@ -771,139 +1531,517 @@ export class Game {
           pier === "gull"
             ? "The Gull is the green plank west of you — stand on it and hold E"
             : "The Wren is the green plank west of you — stand on it and hold E";
-      } else if (nearG) prompt = "E — take loot";
-      else if (nearBarrel)
-        prompt = nearBarrel.opened
-          ? "E — refill ammo"
-          : `E — open ${nearBarrel.spot.id} (refills ammo)`;
-      else if (nearC) prompt = `E — open ${nearC.spot.id}`;
-      if (this.just.has("e")) {
-        if (nearG) this.takeGround(nearG);
-        else if (nearBarrel) this.useBarrel(nearBarrel);
-        else if (nearC) this.openContainer(nearC);
-      }
+      } else if (nearG) prompt = "F — pick up";
+      else if (nearCrate)
+        prompt = nearCrate.opened
+          ? this.gunNeedsReload(p)
+            ? "E — reload"
+            : ""
+          : `E — open ${nearCrate.spot.id}`;
+      else if (nearC)
+        prompt =
+          nearC.spot.kind === "trophy-chest"
+            ? `E — open ${nearC.spot.id} (booty)`
+            : `E — open ${nearC.spot.id}`;
     }
 
     const el = document.getElementById("prompt")!;
     el.textContent = prompt;
   }
 
+  private updateLootHalos() {
+    const p = this.player;
+    const canGrab = p.alive && this.mode === "play";
+    const t = this.elapsed;
+    const pulse = 0.14 + 0.06 * (0.5 + 0.5 * Math.sin(t * 2.4));
+    const wave = 0.5 + 0.5 * Math.sin(t * 2.1);
+    for (const c of this.containers) {
+      const openable = !c.opened;
+      const dist = Math.hypot(c.spot.x - p.x, c.spot.z - p.z);
+      const near = canGrab && openable && dist < PICKUP_RANGE;
+      const reload =
+        canGrab &&
+        c.opened &&
+        c.spot.kind === "crate" &&
+        dist < PICKUP_RANGE &&
+        this.gunNeedsReload(p);
+      shineOutline(c.mesh, openable || reload ? wave : 0, reload ? "reload" : "loot");
+      glowLoot(c.mesh, near || reload ? pulse : 0, reload ? RELOAD_GLOW : LOOT_GLOW);
+      if (c.hintReload) c.hintReload.visible = c.opened && this.gunNeedsReload(p);
+    }
+    for (const g of this.ground) {
+      const near = canGrab && Math.hypot(g.x - p.x, g.z - p.z) < PICKUP_RANGE;
+      const sprite = g.mesh as THREE.Sprite;
+      if (sprite.isSprite) {
+        const s = (1.15 + (near ? pulse * 2.4 : 0.08 * Math.sin(t * 2.1))) * UNIT;
+        sprite.scale.set(s, s, 1);
+        continue;
+      }
+      glowLoot(g.mesh, near ? pulse : 0);
+    }
+  }
+
   private takeGround(g: GroundItem, f: Fighter = this.player) {
     if (g.weapon) {
       const owned = f.primary ?? f.bag;
-      if (owned) this.spawnGround(f.x, f.z + 1.2, { weapon: owned, ammo: f.ammo });
+      if (owned) this.spawnGround(f.x, f.z + 1.2 * UNIT, { weapon: owned, ammo: f.ammo });
       f.primary = g.weapon;
       f.bag = null;
       f.ammo = g.ammo ?? 0;
     }
     if (g.trophy) {
-      if (f.trophy) this.spawnGround(f.x + 1.2, f.z, { trophy: f.trophy });
+      if (f.trophy) this.spawnGround(f.x + 1.2 * UNIT, f.z, { trophy: f.trophy });
       f.trophy = g.trophy;
     }
     if (g.ammo && !g.weapon) f.ammo += g.ammo;
+    if (!f.dummy) {
+      if (g.weapon) this.flash(`Picked up ${weaponName(g.weapon)}`);
+      else if (g.trophy) this.flash(`Picked up ${trophyName(g.trophy)}`);
+      else if (g.ammo) this.flash("Picked up ammo");
+      sfxPickup();
+    }
     this.scene.remove(g.mesh);
+    if (g.hintPickup) this.scene.remove(g.hintPickup);
     this.ground = this.ground.filter((x) => x !== g);
   }
 
   private magSize(f: Fighter): number {
     const gun = f.primary ?? f.bag;
-    return gun === "musket" ? MUSKET_AMMO : FLINT_AMMO;
+    if (gun === "musket") return MUSKET_AMMO;
+    if (gun === "flintlock") return FLINT_AMMO;
+    return 0;
+  }
+
+  private gunNeedsReload(f: Fighter | undefined): boolean {
+    if (!f?.alive) return false;
+    const gun = f.primary ?? f.bag;
+    if (gun !== "flintlock" && gun !== "musket") return false;
+    const cap = this.magSize(f);
+    return cap > 0 && f.ammo < cap;
   }
 
   private refillAmmo(f: Fighter, announce = true): boolean {
+    const gun = f.primary ?? f.bag;
+    if (!gun) return false;
     const cap = this.magSize(f);
     const was = f.ammo;
     f.ammo = Math.max(f.ammo, cap);
     const gained = f.ammo > was;
+    if (gained && !f.dummy) sfxReload();
     if (!announce || f.dummy) return gained;
-    const gun = f.primary ?? f.bag;
-    if (!gained) this.flash("Already full.");
-    else this.flash(gun ? `${weaponName(gun)} topped up.` : "Powder. Take a gun.");
+    if (gained) this.flash(`${weaponName(gun)} topped up.`);
     return gained;
-  }
-
-  private useBarrel(c: LootBox, f: Fighter = this.player) {
-    if (!c.opened) this.openContainer(c, f);
-    else this.refillAmmo(f);
   }
 
   private openContainer(c: LootBox, f: Fighter = this.player) {
     this.setContainerOpen(c, true);
-    const roll = rollContainer(c.spot.kind);
-    if (c.spot.id === "U1" && !roll.weapon) {
-      roll.weapon = "flintlock";
-      roll.ammo = FLINT_AMMO;
-    }
+    if (!f.dummy) this.flash(`Opened ${containerLabel(c.spot.kind)}`);
+    if (!f.dummy) sfxOpen();
+    const roll = c.loot;
     if (c.spot.id === "R2") {
       roll.weapon = "musket";
       roll.ammo = MUSKET_AMMO;
     }
     if (roll.rum) {
+      const before = f.hp;
       f.hp = Math.min(PLAYER_HP, f.hp + 28);
-      if (!f.dummy && c.spot.kind !== "barrel") this.flash("Rum. +HP");
+      if (!f.dummy && f.hp > before) this.pulseHpHeal(before);
     }
-    if (c.spot.kind === "barrel") {
-      const gained = this.refillAmmo(f, false);
-      if (!f.dummy) {
-        if (roll.rum) this.flash("Rum. +HP · ammo refilled.");
-        else if (gained) this.flash("Ammo refilled.");
-        else this.flash("Already full.");
-      }
+    if (c.spot.kind === "crate") {
+      const gun = f.primary ?? f.bag;
+      if (gun) this.refillAmmo(f, false);
     } else if (roll.ammo && !roll.weapon) {
       f.ammo += roll.ammo;
     }
-    if (roll.weapon) this.spawnGround(c.spot.x, c.spot.z + 1.1, { weapon: roll.weapon, ammo: roll.ammo });
-    if (roll.trophy) this.spawnGround(c.spot.x + 1.1, c.spot.z, { trophy: roll.trophy });
+    if (roll.weapon) this.spawnGround(c.spot.x, c.spot.z + UNIT * 1.5, { weapon: roll.weapon, ammo: roll.ammo });
+    if (roll.trophy) this.spawnGround(c.spot.x + UNIT * 1.5, c.spot.z, { trophy: roll.trophy });
   }
 
   private extract() {
     this.mode = "extracted";
+    this.extractedFrom = this.island;
     this.extractedTrophy = this.player.trophy;
-    if (this.player.trophy === "junk") this.junkStash += 1;
+    if (this.player.trophy) this.addStash(this.player.trophy);
     this.player.trophy = null;
+    if (this.island < 5) {
+      this.island = nextIsland(this.island);
+      if (this.island > this.unlocked) this.unlocked = this.island;
+    }
+    this.persist();
+    this.rebuildIsland();
+    paintTrophyCard(document.getElementById("trophy-card")!, null);
     this.hideAims();
-    this.showOverlay(
-      "You got out",
-      `The ship leaves with ${trophyName(this.extractedTrophy)}. Guns stay in the harbor.`,
-    );
+    sfxExtract();
+    this.showOverlay("You got out!", "");
   }
 
   private navyMissed(): string {
     if (!this.player.alive) return "Match over.";
     const pier = pierWithoutShip(this.player.x, this.player.z);
     if (pier === "gull") {
-      return "The Gull left North Wharf. Extract is the green plank at the west end — hold E before 10:00.";
+      return `The Gull left ${pierLabel("gull")}. Extract is the green plank at the seaward end — hold E before 0:00.`;
     }
     if (pier === "wren") {
-      return "The Wren left South Slip. Extract is the green plank at the west end — hold E before 10:00.";
+      return `The Wren left ${pierLabel("wren")}. Extract is the green plank at the seaward end — hold E before 0:00.`;
     }
     return "You were still on the dock. The ships left without you.";
   }
 
   private showOverlay(title: string, body: string) {
+    this.overlayView = "summary";
+    this.closeCraftPop();
+    document.getElementById("overlay-panel")!.classList.remove("flipped");
     document.getElementById("overlay")!.classList.remove("hidden");
     document.getElementById("overlay-title")!.textContent = title;
-    document.getElementById("overlay-body")!.textContent = body;
-    document.getElementById("stash-line")!.textContent = `Junk on the shelf: ${this.junkStash}${this.colorway ? " · Dockhand colorway crafted" : ""}`;
-    const craft = document.getElementById("craft-btn")!;
-    craft.classList.toggle("hidden", this.junkStash < 5 || this.colorway);
+    document.getElementById("overlay-title")!.classList.remove("select-heading");
+    const bodyEl = document.getElementById("overlay-body")!;
+    bodyEl.textContent = body;
+    bodyEl.classList.toggle("hidden", !body);
+    const stashLine = document.getElementById("stash-line")!;
+    stashLine.classList.remove("hidden");
+    stashLine.textContent =
+      this.mode === "extracted" ? this.extractLine() : this.stashLine();
+    document.getElementById("island-block")!.classList.add("hidden");
+    document.getElementById("select-pane")!.classList.add("hidden");
+    document.getElementById("extract-trophy")!.classList.toggle("hidden", this.mode !== "extracted");
+    this.renderStash();
+    paintTrophyCard(
+      document.getElementById("extract-trophy")!,
+      this.mode === "extracted" ? this.extractedTrophy : null,
+    );
+    document.getElementById("again-btn")!.textContent = "Choose pirate";
+    startMenuMusic();
   }
 
-  private craft() {
-    if (this.junkStash < 5 || this.colorway) return;
-    this.junkStash -= 5;
-    this.colorway = true;
-    document.getElementById("portrait")!.classList.add("colorway");
-    this.flash("Dockhand colorway — your PFP.");
-    this.showOverlay(
-      "Crafted",
-      "Five bent doubloons become a colorway. The house still does not sell Ironsides.",
-    );
+  private showSelect() {
+    this.mode = "select";
+    this.overlayView = "select";
+    this.closeCraftPop();
+    document.getElementById("overlay")!.classList.remove("hidden");
+    document.getElementById("overlay-panel")!.classList.remove("flipped");
+    document.getElementById("overlay-title")!.textContent = "Choose your pirate";
+    document.getElementById("overlay-title")!.classList.add("select-heading");
+    const bodyEl = document.getElementById("overlay-body")!;
+    bodyEl.textContent = "";
+    bodyEl.classList.add("hidden");
+    const stashLine = document.getElementById("stash-line")!;
+    const empty = this.stashEmpty();
+    stashLine.textContent = empty
+      ? "Pick who you take in. Extract booty to craft skins. Extracting unlocks the next island."
+      : "";
+    stashLine.classList.toggle("hidden", !empty);
+    document.getElementById("extract-trophy")!.classList.add("hidden");
+    document.getElementById("island-block")!.classList.remove("hidden");
+    document.getElementById("select-pane")!.classList.remove("hidden");
+    document.getElementById("again-btn")!.textContent = `Enter ${islandName(this.island)}`;
+    this.renderStash();
+    this.renderIslands();
+    this.renderOwned();
+    this.applyHudSkin();
+    startMenuMusic();
+  }
+
+  private showCraft() {
+    this.overlayView = "craft";
+    this.closeCraftPop();
+    document.getElementById("overlay-panel")!.classList.add("flipped");
+    this.renderCraft();
+  }
+
+  private loadoutName(): string {
+    if (this.equipped) return SKINS[this.equipped].name;
+    return PIRATE_NAMES[this.pickedPirate];
+  }
+
+  private pickCard(selected: boolean): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pick-card";
+    btn.classList.toggle("equipped", selected);
+    return btn;
+  }
+
+  private renderOwned() {
+    const root = document.getElementById("owned-skins")!;
+    root.replaceChildren();
+    for (const id of PLAYABLE_PIRATES) {
+      const btn = this.pickCard(!this.equipped && this.pickedPirate === id);
+      btn.dataset.pickPirate = id;
+      btn.title = PIRATE_NAMES[id];
+      const face = document.createElement("span");
+      face.className = "pick-face";
+      face.style.backgroundImage = `url(${PIRATE_ART[id]})`;
+      const label = document.createElement("span");
+      label.className = "pick-label";
+      label.textContent = PIRATE_NAMES[id];
+      btn.append(face, label);
+      root.appendChild(btn);
+    }
+    for (const id of Object.keys(SKINS) as SkinId[]) {
+      if (!this.owned.has(id)) continue;
+      const skin = SKINS[id];
+      const btn = this.pickCard(this.equipped === id);
+      btn.dataset.equip = id;
+      btn.title = skin.name;
+      const face = document.createElement("span");
+      face.className = "pick-face";
+      if (skin.pfp) face.style.backgroundImage = `url(${skin.pfp})`;
+      const label = document.createElement("span");
+      label.className = "pick-label";
+      label.textContent = skin.name;
+      btn.append(face, label);
+      root.appendChild(btn);
+    }
+    document.getElementById("skins-line")!.textContent = `Selected: ${this.loadoutName()}`;
+  }
+
+  private renderIslands() {
+    const root = document.getElementById("island-picks")!;
+    root.replaceChildren();
+    for (const id of ISLAND_IDS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "island-pick";
+      btn.dataset.island = String(id);
+      const locked = id > this.unlocked;
+      btn.classList.toggle("equipped", id === this.island && !locked);
+      btn.classList.toggle("locked", locked);
+      btn.disabled = locked;
+      btn.title = locked ? `Extract from ${islandName((id - 1) as IslandId)} to unlock` : ISLANDS[id].name;
+      const num = document.createElement("span");
+      num.className = "island-num";
+      num.textContent = String(id);
+      const label = document.createElement("span");
+      label.className = "island-name";
+      label.textContent = locked ? "Locked" : ISLANDS[id].name;
+      btn.append(num, label);
+      root.appendChild(btn);
+    }
+  }
+
+  private renderCraft() {
+    const root = document.getElementById("craft-list")!;
+    root.replaceChildren();
+    let shown = 0;
+    for (const id of CRAFT_SKINS) {
+      const skin = SKINS[id];
+      if (!skin.need) continue;
+      if (this.owned.has(id)) continue;
+      const btn = this.pickCard(false);
+      btn.dataset.craft = id;
+      btn.title = skin.name;
+      const face = document.createElement("span");
+      face.className = "pick-face";
+      if (skin.pfp) face.style.backgroundImage = `url(${skin.pfp})`;
+      const label = document.createElement("span");
+      label.className = "pick-label";
+      label.textContent = skin.name;
+      btn.append(face, label);
+      root.appendChild(btn);
+      shown += 1;
+    }
+    if (!shown) {
+      const empty = document.createElement("p");
+      empty.className = "craft-empty";
+      empty.textContent = "Every Pirate Nation skin on the list is already on your shelf.";
+      root.appendChild(empty);
+    }
+  }
+
+  private openCraftPop(id: SkinId) {
+    const skin = SKINS[id];
+    if (!skin?.need) return;
+    this.craftFocus = id;
+    const pop = document.getElementById("craft-pop")!;
+    pop.classList.remove("hidden");
+    const face = document.getElementById("craft-pop-face")!;
+    face.style.backgroundImage = skin.pfp ? `url(${skin.pfp})` : "";
+    document.getElementById("craft-pop-name")!.textContent = skin.name;
+    const blurb = document.getElementById("craft-pop-blurb")!;
+    blurb.textContent = skin.blurb ?? "";
+    blurb.classList.toggle("hidden", !skin.blurb);
+    const afford = canAfford(this.stash, skin.need);
+    const needEl = document.getElementById("craft-pop-need")!;
+    needEl.replaceChildren();
+    const prefix = document.createElement("span");
+    prefix.className = "need-prefix";
+    prefix.textContent = afford ? `${skin.recipe} ·` : "Need";
+    needEl.append(prefix);
+    for (const [i, part] of needStatus(this.stash, skin.need).entries()) {
+      const { id, have } = part;
+      if (i > 0) needEl.append(" + ");
+      const item = document.createElement("span");
+      item.className = have ? "need-item have" : "need-item lack";
+      item.title = have ? `Have ${trophyName(id)}` : `Need ${trophyName(id)}`;
+      const art = document.createElement("span");
+      art.className = "need-art";
+      art.style.backgroundImage = `url("${trophyArt(id)}")`;
+      const name = document.createElement("span");
+      name.className = "need-name";
+      name.textContent = trophyName(id);
+      item.append(art, name);
+      needEl.append(item);
+    }
+    const btn = document.getElementById("craft-pop-btn") as HTMLButtonElement;
+    btn.disabled = !afford || this.owned.has(id);
+    btn.textContent = this.owned.has(id) ? "Owned" : afford ? "Craft" : "Not enough Booty";
+  }
+
+  private closeCraftPop() {
+    this.craftFocus = null;
+    document.getElementById("craft-pop")?.classList.add("hidden");
+  }
+
+  private addStash(id: TrophyId) {
+    this.stash[id] = (this.stash[id] ?? 0) + 1;
+    this.persist();
+  }
+
+  private persist() {
+    saveProgress({
+      stash: this.stash,
+      owned: [...this.owned],
+      equipped: this.equipped,
+      pirate: this.pickedPirate,
+      island: this.island,
+      unlocked: this.unlocked,
+    });
+  }
+
+  private extractLine(): string {
+    const from = islandName(this.extractedFrom);
+    const booty = this.extractedTrophy
+      ? ` with a ${trophyName(this.extractedTrophy)}`
+      : "";
+    if (this.extractedFrom < 5) {
+      return `You got out of ${from}${booty}. Next island: ${islandName(this.island)}.`;
+    }
+    return `You got out of ${from}${booty}.`;
+  }
+
+  private stashEmpty(): boolean {
+    return !Object.values(this.stash).some((n) => n);
+  }
+
+  private stashLine(): string {
+    const bits: string[] = [];
+    for (const [id, count] of Object.entries(this.stash)) {
+      if (!count) continue;
+      bits.push(`${count}× ${trophyName(id as TrophyId)}`);
+    }
+    return bits.length ? bits.join(" · ") : "No booty on the shelf.";
+  }
+
+  private renderStash() {
+    const block = document.getElementById("stash-block")!;
+    const root = document.getElementById("stash-shelf")!;
+    root.replaceChildren();
+    if (this.overlayView !== "select") {
+      block.classList.add("hidden");
+      return;
+    }
+    for (const [id, count] of Object.entries(this.stash)) {
+      if (!count) continue;
+      const tid = id as TrophyId;
+      const edge = trophyRarityColor(tid);
+      const chip = document.createElement("div");
+      chip.className = "stash-chip";
+      chip.style.borderColor = edge;
+      chip.setAttribute("aria-label", `${trophyName(tid)}, ${trophyRarity(tid)}`);
+      const img = document.createElement("span");
+      img.className = "stash-art";
+      img.style.backgroundImage = `url("${trophyArt(tid)}")`;
+      const n = document.createElement("span");
+      n.className = "stash-count";
+      n.textContent = `${count}`;
+      const tip = document.createElement("span");
+      tip.className = "stash-tip";
+      const tipName = document.createElement("span");
+      tipName.className = "stash-tip-name";
+      tipName.textContent = trophyName(tid);
+      const tipRarity = document.createElement("span");
+      tipRarity.className = "stash-tip-rarity";
+      tipRarity.textContent = trophyRarity(tid);
+      tipRarity.style.color = edge;
+      tip.append(tipName, tipRarity);
+      chip.append(img, n, tip);
+      root.appendChild(chip);
+    }
+    block.classList.toggle("hidden", !root.childElementCount);
+  }
+
+  private craft(id: SkinId) {
+    const skin = SKINS[id];
+    if (!skin?.need) return;
+    if (this.owned.has(id)) return;
+    if (!canAfford(this.stash, skin.need)) return;
+    consumeNeed(this.stash, skin.need);
+    this.owned.add(id);
+    this.equipSkin(id);
+    this.persist();
+    sfxCraft();
+    this.flash(`${skin.name} — your PFP.`);
+    const stashLine = document.getElementById("stash-line")!;
+    stashLine.classList.remove("hidden");
+    stashLine.textContent = `${skin.name} from ${needLabel(skin.need)}.`;
+    this.renderStash();
+    this.renderOwned();
+    this.renderCraft();
+    this.closeCraftPop();
+  }
+
+  private equipPirate(id: PirateId) {
+    this.pickedPirate = id;
+    this.equipped = null;
+    if (this.player && this.mode === "select") this.spawnPlayer(this.player.spawnIndex);
+    else if (this.player) this.paintSkin(this.player);
+    this.applyHudSkin();
+    this.renderOwned();
+    this.persist();
+  }
+
+  private equipSkin(id: SkinId) {
+    if (!this.owned.has(id)) return;
+    this.equipped = id;
+    this.pickedPirate = "rustbeard";
+    if (this.player && this.mode === "select") this.spawnPlayer(this.player.spawnIndex);
+    else if (this.player) this.paintSkin(this.player);
+    this.applyHudSkin();
+    this.renderOwned();
+    this.persist();
+  }
+
+  private applyHudSkin() {
+    const skin = this.equipped ? SKINS[this.equipped] : null;
+    const el = document.getElementById("portrait")!;
+    el.className = "";
+    el.title = this.loadoutName();
+    el.style.borderColor = `#${markerColor(skin).toString(16).padStart(6, "0")}`;
+    if (skin?.pfp) {
+      el.style.background = `center / cover url("${skin.pfp}")`;
+      el.classList.add("has-pfp");
+    } else {
+      el.style.background = `center / cover url("${PIRATE_ART[this.pickedPirate]}")`;
+      el.classList.add("has-pfp");
+    }
+    document.getElementById("portrait-name")!.textContent = this.loadoutName();
+  }
+
+  private paintSkin(f: Fighter) {
+    const skin = this.equipped ? SKINS[this.equipped] : null;
+    f.color = skin?.color ?? 0xe8d5a3;
+    f.mesh.userData.base = f.color;
+    if (f.marker) {
+      (f.marker.material as THREE.MeshBasicMaterial).color.setHex(markerColor(skin));
+    }
   }
 
   private resetDummy(d: Fighter) {
-    const s = SPAWNS[d.spawnIndex];
+    const s = SPAWNS[d.spawnIndex] ?? SPAWNS[0] ?? { x: 0, z: 0 };
     d.alive = true;
+    d.corpse = false;
+    d.dieT = 0;
+    d.fallSide = 1;
     d.hp = PLAYER_HP;
     d.x = s.x;
     d.z = s.z;
@@ -911,7 +2049,7 @@ export class Game {
     d.primary = d.spawnIndex === 7 ? "flintlock" : null;
     d.bag = null;
     d.ammo = d.spawnIndex === 7 ? FLINT_AMMO : 0;
-    d.trophy = d.spawnIndex === 7 ? "junk" : null;
+    d.trophy = d.spawnIndex === 7 ? "wood" : null;
     d.cooldown = 1.4;
     d.rummage = 0;
     d.lootReadyAt =
@@ -923,28 +2061,69 @@ export class Game {
     d.wanderT = 0;
     d.tx = s.x;
     d.tz = s.z;
-    (d.mesh.material as THREE.MeshLambertMaterial).color.setHex(d.color);
+    d.y = standHeight(s.x, s.z);
+    d.vy = 0;
+    d.grounded = true;
+    d.jumpCool = 0;
+    d.px = s.x;
+    d.pz = s.z;
+    d.mesh.rotation.x = 0;
+    d.mesh.rotation.z = 0;
+    if (!d.rig) {
+      (d.mesh as THREE.Mesh).material = new THREE.MeshLambertMaterial({ color: d.color });
+    } else {
+      resetPirateLive(d.rig);
+      flashPirate(d.mesh, false);
+    }
     this.placeFighter(d);
     this.syncAim(d);
   }
 
-  private resetMatch() {
+  private startMatch() {
+    if (!this.ready || !this.player) return;
     document.getElementById("overlay")!.classList.add("hidden");
+    document.getElementById("overlay-panel")!.classList.remove("flipped");
+    this.closeCraftPop();
     this.mode = "play";
     this.elapsed = 0;
     this.channel = 0;
     this.lastHit = -10;
-    for (const g of this.ground) this.scene.remove(g.mesh);
+    this.clearHpHeal();
+    for (const g of this.ground) {
+      this.scene.remove(g.mesh);
+      if (g.hintPickup) this.scene.remove(g.hintPickup);
+    }
     this.ground = [];
     for (const c of this.containers) this.setContainerOpen(c, false);
     for (const d of this.dummies) this.resetDummy(d);
     this.spawnPlayer(2);
     this.inspect = null;
+    this.extractToastDismissed = false;
+    this.navyStingAt = -1;
+    this.refillContainers();
+    this.paintIsland();
+    this.syncExtractToast();
+    unlockAudio();
+    startMatchAudio();
   }
 
   private flash(msg: string) {
     this.toast = msg;
     this.toastUntil = this.elapsed + 3;
+  }
+
+  private syncExtractToast() {
+    const el = document.getElementById("extract-toast")!;
+    const hud = document.getElementById("hud")!;
+    const show =
+      this.mode === "play" && !this.extractToastDismissed && this.elapsed >= EXTRACT_OPEN_AT;
+    el.classList.toggle("hidden", !show);
+    hud.classList.toggle("has-extract-toast", show);
+    if (!show) return;
+    document.getElementById("extract-toast-msg")!.textContent =
+      this.elapsed >= BELL_OPEN_AT
+        ? "Extract on The Gull, The Wren, or Fort Bell. Hold E on the gold area."
+        : `Extract on The Gull (${pierLabel("gull")}) or The Wren (${pierLabel("wren")}). Hold E on the gold area.`;
   }
 
   private dummyBrain(d: Fighter, dt: number) {
@@ -973,22 +2152,12 @@ export class Game {
     }
 
     if (needsGun) {
-      if (this.dummyTryLoot(d, dt)) {
-        if (poked) {
-          d.yaw = Math.atan2(poked.x - d.x, poked.z - d.z);
-          this.tryFire(d);
-        }
-        return;
-      }
-      if (poked) {
-        this.dummyFight(d, poked, pDist, dt, false);
-        return;
-      }
+      if (this.dummyTryLoot(d, dt)) return;
     }
 
     if (poked) {
-      this.dummyFight(d, poked, pDist, dt, job === "hunt" && this.elapsed >= HUNT_AFTER);
-      if (job !== "hunt" || this.elapsed < HUNT_AFTER) return;
+      const chase = job === "hunt" && this.elapsed >= HUNT_AFTER;
+      if (this.dummyFight(d, poked, pDist, dt, chase)) return;
     }
 
     if (job === "seal" && !d.trophy) {
@@ -1016,37 +2185,49 @@ export class Game {
   private shouldFlee(d: Fighter, enemy: Fighter, dist: number): boolean {
     if (enemy.dummy || !this.player.alive) return false;
     const job = this.dummyJob(d);
-    if (d.trophy && dist < 20 && dist > 4.5) return true;
-    if (d.hp < PLAYER_HP * 0.4 && dist < 16 && dist > 4.5) return true;
+    if (d.trophy && dist < 20 * UNIT && dist > 4.5 * UNIT) return true;
+    if (d.hp < PLAYER_HP * 0.4 && dist < 16 * UNIT && dist > 4.5 * UNIT) return true;
     if (job === "hunt") return false;
     const mine = this.shotRange(d);
     const theirs = this.shotRange(enemy);
     if (mine >= theirs) return false;
-    if (dist > theirs + 5) return false;
-    return this.canSee(d, enemy) || dist < 10;
+    if (dist > theirs + 5 * UNIT) return false;
+    return this.canSee(d, enemy) || dist < 10 * UNIT;
   }
 
   private dummyFlee(d: Fighter, enemy: Fighter, dist: number, dt: number) {
     const keep =
       walkClear(d.tx, d.tz) &&
-      Math.hypot(d.tx - d.x, d.tz - d.z) > 3.5 &&
-      Math.hypot(d.tx - enemy.x, d.tz - enemy.z) > dist + 1;
+      Math.hypot(d.tx - d.x, d.tz - d.z) > 3.5 * UNIT &&
+      Math.hypot(d.tx - enemy.x, d.tz - enemy.z) > dist + UNIT;
     const goal = keep
       ? { x: d.tx, z: d.tz }
       : pickFleePoint(d.x, d.z, enemy.x, enemy.z, d.spawnIndex % 2 === 0 ? 1 : -1);
     d.tx = goal.x;
     d.tz = goal.z;
     this.dummySteer(d, goal.x, goal.z, dt, 0.95);
-    const mine = this.shotRange(d);
-    if (dist < mine && this.canSee(d, enemy)) {
-      d.yaw = Math.atan2(enemy.x - d.x, enemy.z - d.z);
-      this.tryFire(d);
-    }
   }
 
-  private dummyFight(d: Fighter, enemy: Fighter, dist: number, dt: number, chase: boolean) {
+  /** True if this pirate is busy fighting instead of looting. */
+  private dummyFight(d: Fighter, enemy: Fighter, dist: number, dt: number, chase: boolean): boolean {
+    d.yaw = Math.atan2(enemy.x - d.x, enemy.z - d.z);
+    if (!chase && this.inReach(d, enemy)) return true;
+    if (!chase && dist > 4.2 * UNIT && dist < 16 * UNIT) {
+      const keep =
+        walkClear(d.tx, d.tz) &&
+        Math.hypot(d.tx - d.x, d.tz - d.z) > 0.8 * UNIT &&
+        Math.hypot(d.tx - enemy.x, d.tz - enemy.z) > 2.4 * UNIT;
+      const hide = keep ? { x: d.tx, z: d.tz } : this.dummyHidePoint(d, enemy);
+      if (hide) {
+        d.tx = hide.x;
+        d.tz = hide.z;
+        this.dummySteer(d, hide.x, hide.z, dt, 0.88, false);
+        return true;
+      }
+    }
     if (chase) {
-      if (dist > 3.2) this.dummySteer(d, enemy.x, enemy.z, dt, 0.7, false);
+      if (enemy.y > d.y + 0.4 * UNIT && dist < 6 * UNIT && d.grounded) this.tryJump(d);
+      if (dist > 3.2 * UNIT) this.dummySteer(d, enemy.x, enemy.z, dt, 0.7, false);
       else {
         const side = d.spawnIndex % 2 === 0 ? 1 : -1;
         this.dummySteer(
@@ -1058,10 +2239,38 @@ export class Game {
           false,
         );
       }
+      return true;
     }
-    d.yaw = Math.atan2(enemy.x - d.x, enemy.z - d.z);
-    const shot = this.shotRange(d);
-    if (dist < shot && this.canSee(d, enemy)) this.tryFire(d);
+    return dist < 4.2 * UNIT;
+  }
+
+  private dummyHidePoint(d: Fighter, enemy: Fighter): { x: number; z: number } | null {
+    let best: { x: number; z: number } | null = null;
+    let bestScore = 1e9;
+    for (const c of COVER) {
+      if (!c.los) continue;
+      const cx = c.rect.x + c.rect.w / 2;
+      const cz = c.rect.z + c.rect.d / 2;
+      const dist = Math.hypot(cx - d.x, cz - d.z);
+      if (dist > 11 * UNIT || dist < 1.2 * UNIT) continue;
+      const ex = cx - enemy.x;
+      const ez = cz - enemy.z;
+      const len = Math.hypot(ex, ez) || 1;
+      const pad = Math.max(c.rect.w, c.rect.d) * 0.5 + 1.15 * UNIT;
+      const px = cx + (ex / len) * pad;
+      const pz = cz + (ez / len) * pad;
+      const gy = standHeight(px, pz);
+      if (!isWalkable(px, pz) || coverBlocked(px, pz, gy)) continue;
+      const toE = Math.hypot(enemy.x - px, enemy.z - pz);
+      if (toE < 2.5) continue;
+      if (!blockedByWall(px, pz, (enemy.x - px) / toE, (enemy.z - pz) / toE, toE - 0.4)) continue;
+      const score = dist + Math.hypot(px - d.x, pz - d.z) * 0.3;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { x: px, z: pz };
+      }
+    }
+    return best;
   }
 
   private dummyExtractPad(d: Fighter): { x: number; z: number } {
@@ -1089,16 +2298,16 @@ export class Game {
     const toPad = Math.hypot(d.x - pad.x, d.z - pad.z);
     const poked = this.contactThreat(d);
     const pDist = enemy ? Math.hypot(enemy.x - d.x, enemy.z - d.z) : 999;
-    const mark = poked ?? (enemy && pDist < 16 ? enemy : null);
+    const mark = poked ?? (enemy && pDist < 16 * UNIT ? enemy : null);
     const markDist = mark ? Math.hypot(mark.x - d.x, mark.z - d.z) : 999;
     if (mark) {
       d.extractHold = 0;
-      const chase = !mark.dummy && markDist < 10 && toPad < 8;
-      this.dummyFight(d, mark, markDist, dt, chase);
-      if (!chase && toPad > 2.4) this.dummySteer(d, pad.x, pad.z, dt, 0.55);
-      if (chase || markDist < 6) return;
+      const chase = !mark.dummy && markDist < 10 * UNIT && toPad < 8 * UNIT;
+      if (this.dummyFight(d, mark, markDist, dt, chase)) return;
+      if (toPad > 2.4 * UNIT) this.dummySteer(d, pad.x, pad.z, dt, 0.55);
+      if (markDist < 6 * UNIT) return;
     }
-    if (toPad > 1.8) {
+    if (toPad > 1.8 * UNIT) {
       d.extractHold = 0;
       this.dummySteer(d, pad.x, pad.z, dt, 0.72);
       return;
@@ -1114,9 +2323,11 @@ export class Game {
 
   private dummyExtractOut(d: Fighter, zone: "gull" | "wren" | "bell") {
     d.alive = false;
+    d.corpse = false;
     d.mesh.visible = false;
     d.aim.setVisible(false);
     if (d.hpPip) d.hpPip.visible = false;
+    if (d.trophyIcon) d.trophyIcon.visible = false;
     d.primary = null;
     d.bag = null;
     d.ammo = 0;
@@ -1174,11 +2385,12 @@ export class Game {
 
     if (unarmed || needsAmmo || wantsMusket) {
       for (const c of this.containers) {
-        if (c.opened && (c.spot.kind !== "barrel" || !needsAmmo)) continue;
+        if (c.opened && (c.spot.kind !== "crate" || !needsAmmo)) continue;
+        if (c.spot.kind === "trophy-chest") continue;
         if (this.lootClaimed(c.spot.x, c.spot.z, d)) continue;
         if (wantsMusket && !unarmed && !needsAmmo && c.spot.id !== "R2") continue;
         const dist = Math.hypot(c.spot.x - d.x, c.spot.z - d.z);
-        const bonus = c.spot.kind === "barrel" && needsAmmo ? -8 : 0;
+        const bonus = c.spot.kind === "crate" && (needsAmmo || unarmed) ? -8 : 0;
         const score = dist + bonus;
         if (score < bestD) {
           bestD = score;
@@ -1191,13 +2403,20 @@ export class Game {
     }
 
     if (bestD > 1e8) return false;
+    const dist = Math.hypot(d.x - bestX, d.z - bestZ);
     d.tx = bestX;
     d.tz = bestZ;
-    this.dummySteer(d, bestX, bestZ, dt, 0.62);
-    if (bestD > PICKUP_RANGE) {
+    if (dist > PICKUP_RANGE) {
+      const stand = lootStand(bestX, bestZ);
       d.rummage = 0;
-      return true;
+      if (Math.hypot(d.x - stand.x, d.z - stand.z) < 0.45 * UNIT) {
+        d.wanderT = 0;
+        d.lootReadyAt = this.elapsed + 3;
+        return false;
+      }
+      return this.dummyGoTo(d, stand.x, stand.z, dt, 0.62);
     }
+    d.wanderT = 0;
     d.rummage += dt;
     const hold = ground ? 0.45 : 0.7;
     if (d.rummage < hold) return true;
@@ -1221,7 +2440,7 @@ export class Game {
 
     for (const g of this.ground) {
       if (!g.trophy) continue;
-      if (d.spawnIndex === 5 && g.trophy !== "keep-seal") continue;
+      if (d.spawnIndex === 5 && trophyTier(g.trophy) < 3) continue;
       if (this.lootClaimed(g.x, g.z, d)) continue;
       const dist = Math.hypot(g.x - d.x, g.z - d.z);
       if (dist > maxDist) continue;
@@ -1241,7 +2460,8 @@ export class Game {
       if (this.lootClaimed(c.spot.x, c.spot.z, d)) continue;
       const dist = Math.hypot(c.spot.x - d.x, c.spot.z - d.z);
       if (dist > maxDist) continue;
-      const bonus = c.spot.kind === "chest" ? -18 : c.spot.kind === "lockbox" ? -6 : 0;
+      const bonus =
+        c.spot.kind === "chest" ? -18 : c.spot.kind === "trophy-chest" ? -12 : c.spot.kind === "lockbox" ? -6 : 0;
       const score = dist + bonus;
       if (score < bestD) {
         bestD = score;
@@ -1253,13 +2473,20 @@ export class Game {
     }
 
     if (bestD > 1e8) return false;
+    const dist = Math.hypot(d.x - bestX, d.z - bestZ);
     d.tx = bestX;
     d.tz = bestZ;
-    this.dummySteer(d, bestX, bestZ, dt, 0.62);
-    if (Math.hypot(d.x - bestX, d.z - bestZ) > PICKUP_RANGE) {
+    if (dist > PICKUP_RANGE) {
+      const stand = lootStand(bestX, bestZ);
       d.rummage = 0;
-      return true;
+      if (Math.hypot(d.x - stand.x, d.z - stand.z) < 0.45 * UNIT) {
+        d.wanderT = 0;
+        d.lootReadyAt = this.elapsed + 3;
+        return false;
+      }
+      return this.dummyGoTo(d, stand.x, stand.z, dt, 0.62);
     }
+    d.wanderT = 0;
     d.rummage += dt;
     const hold = ground ? 0.45 : 0.7;
     if (d.rummage < hold) return true;
@@ -1278,61 +2505,75 @@ export class Game {
     );
   }
 
+  private dummyGoTo(d: Fighter, x: number, z: number, dt: number, speed: number): boolean {
+    const before = Math.hypot(x - d.x, z - d.z);
+    if (before < 0.35) {
+      d.wanderT = 0;
+      return true;
+    }
+    this.dummySteer(d, x, z, dt, speed);
+    const after = Math.hypot(x - d.x, z - d.z);
+    if (after < before - 0.02) {
+      d.wanderT = 0;
+      return true;
+    }
+    d.wanderT += dt;
+    if (d.wanderT > 0.45) this.dummyMaybeJump(d);
+    if (d.wanderT < 0.9) return true;
+    d.wanderT = 0;
+    d.nav.path = [];
+    d.lootReadyAt = this.elapsed + 3;
+    return false;
+  }
+
   private dummySteer(d: Fighter, x: number, z: number, dt: number, speed: number, face = true) {
-    const step = PLAYER_SPEED * speed * dt;
+    const step = PLAYER_SPEED * Math.min(1, speed) * dt;
     const goal = navStep(d.x, d.z, x, z, d.nav);
     const ox = d.x;
     const oz = d.z;
     const dx = goal.x - ox;
     const dz = goal.z - oz;
     const len = Math.hypot(dx, dz);
-    if (len < 0.1) return;
+    if (len < 0.12 * UNIT) return;
     if (face) d.yaw = Math.atan2(dx, dz);
     const nx = ox + (dx / len) * step;
     const nz = oz + (dz / len) * step;
-    const onMesh = walkClear(ox, oz);
-    const accept = (px: number, pz: number) =>
-      walkClear(px, pz) || (!onMesh && isWalkable(px, pz));
-    if (accept(nx, nz)) {
-      d.x = nx;
-      d.z = nz;
+    if (walkClear(ox, oz)) {
+      if (walkClear(nx, oz) && !coverBlocked(nx, oz, d.y)) d.x = nx;
+      if (walkClear(d.x, nz) && !coverBlocked(d.x, nz, d.y)) d.z = nz;
       return;
     }
-    if (accept(nx, oz)) {
-      d.x = nx;
-      return;
-    }
-    if (accept(ox, nz)) {
-      d.z = nz;
-      return;
-    }
-    if (!onMesh) {
-      const safe = nearestClearPoint(ox, oz);
-      const sx = ox + Math.sign(safe.x - ox) * Math.min(step, Math.abs(safe.x - ox));
-      const sz = oz + Math.sign(safe.z - oz) * Math.min(step, Math.abs(safe.z - oz));
-      if (isWalkable(sx, sz)) {
-        d.x = sx;
-        d.z = sz;
-        d.nav.path = [];
-        return;
+    const safe = nearestClearPoint(ox, oz);
+    const before = Math.hypot(safe.x - ox, safe.z - oz);
+    this.tryMove(
+      d,
+      ox + Math.sign(safe.x - ox) * Math.min(step, Math.abs(safe.x - ox) || step),
+      oz + Math.sign(safe.z - oz) * Math.min(step, Math.abs(safe.z - oz) || step),
+    );
+    const after = Math.hypot(safe.x - d.x, safe.z - d.z);
+    if (after >= before - 0.01) {
+      const sx = safe.x - d.x;
+      const sz = safe.z - d.z;
+      const sl = Math.hypot(sx, sz);
+      if (sl > step && sl > 1e-6) {
+        d.x += (sx / sl) * step;
+        d.z += (sz / sl) * step;
+      } else {
+        d.x = safe.x;
+        d.z = safe.z;
       }
     }
-    const slip = nudgeOffCorner(ox, oz, goal.x, goal.z, step);
-    if (slip && Math.hypot(slip.x - ox, slip.z - oz) > 0.04) {
-      d.x = slip.x;
-      d.z = slip.z;
-      if (face) d.yaw = Math.atan2(slip.x - ox, slip.z - oz);
-      d.nav.path = [];
-      return;
-    }
-    const side = d.spawnIndex % 2 === 0 ? 1 : -1;
-    const hx = ox - (dz / len) * step * side;
-    const hz = oz + (dx / len) * step * side;
-    if (accept(hx, hz)) {
-      d.x = hx;
-      d.z = hz;
-      d.nav.path = [];
-    }
+    d.nav.path = [];
+  }
+
+  private dummyMaybeJump(d: Fighter) {
+    if (!d.grounded || d.jumpCool > 0) return;
+    const dx = Math.sin(d.yaw);
+    const dz = Math.cos(d.yaw);
+    const ax = d.x + dx * 1.7 * UNIT;
+    const az = d.z + dz * 1.7 * UNIT;
+    if (!coverBlocked(ax, az, d.y)) return;
+    if (!coverBlocked(ax, az, d.y + 1.55 * UNIT * PIRATE_SCALE)) this.tryJump(d);
   }
 
   private pickPirate(): Fighter | null {
@@ -1340,10 +2581,10 @@ export class Game {
     const ray = this.raycaster.ray;
     const body = new THREE.Vector3();
     let best: Fighter | null = null;
-    let bestDist = 1.7;
+    let bestDist = 1.7 * UNIT;
     for (const d of this.dummies) {
       if (!d.alive) continue;
-      body.set(d.x, 1.15, d.z);
+      body.set(d.x, d.y + 1.15 * UNIT * PIRATE_SCALE, d.z);
       if (body.clone().sub(ray.origin).dot(ray.direction) < 0.4) continue;
       const dist = ray.distanceToPoint(body);
       if (dist < bestDist) {
@@ -1354,22 +2595,12 @@ export class Game {
     return best;
   }
 
-  private updateAim() {
-    this.raycaster.setFromCamera(
-      new THREE.Vector2(this.mouse.x, this.mouse.y),
-      this.camera,
-    );
-    const hit = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this.groundPlane, hit)) {
-      this.aim.x = hit.x;
-      this.aim.z = hit.z;
-    }
-  }
-
   private frame = (now: number) => {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    if (this.mode === "play") this.tick(dt);
+    if (this.player && this.mode === "play") this.tick(dt);
+    this.updateCam(dt);
+    tickOcean(now / 1000);
     this.draw();
     requestAnimationFrame(this.frame);
   };
@@ -1389,56 +2620,86 @@ export class Game {
 
     const opened = this.elapsed >= EXTRACT_OPEN_AT;
     const bell = this.elapsed >= BELL_OPEN_AT;
-    this.extractMats[0].color.setHex(opened ? 0x3dba7c : 0x2a4a3a);
-    this.extractMats[1].color.setHex(opened ? 0x3dba7c : 0x2a4a3a);
-    this.extractMats[2].color.setHex(bell ? 0x3dba7c : 0x2a4a3a);
+    if (opened && this.navyStingAt < 0) {
+      this.navyStingAt = this.elapsed;
+      sfxNavySting();
+    }
+    pulseExtractGlows(this.extractGlows, this.elapsed, opened, bell);
+    for (const h of this.extractHints) {
+      h.sprite.visible = h.id === "bell" ? bell : opened;
+    }
     placeNavyShips(this.ships, this.elapsed);
-
-    if (this.elapsed >= EXTRACT_OPEN_AT && this.elapsed < EXTRACT_OPEN_AT + 1.2) {
-      this.flash("The Gull and The Wren drop gangplanks.");
-    }
-    if (this.elapsed >= BELL_OPEN_AT && this.elapsed < BELL_OPEN_AT + 1.2) {
-      this.flash("Fort Bell is open.");
-    }
 
     const p = this.player;
     p.cooldown = Math.max(0, p.cooldown - dt);
-    this.updateAim();
     if (p.alive) {
-      p.yaw = Math.atan2(this.aim.x - p.x, this.aim.z - p.z);
       this.wasdMove(p, dt);
+      this.autoAttack(p);
       this.look.x = p.x;
       this.look.z = p.z;
     } else {
       this.wasdSpectate(dt);
     }
     this.placeFighter(p);
+    this.posePirate(p, dt);
     this.syncAim(p);
     for (const d of this.dummies) {
       d.cooldown = Math.max(0, d.cooldown - dt);
       this.dummyBrain(d, dt);
-      this.dummyShootNearby(d);
+      this.tickAir(d, dt);
+      this.autoAttack(d);
       this.placeFighter(d);
+      this.posePirate(d, dt);
       this.syncAim(d);
     }
     this.interact(dt);
-    revealRoofs(this.roofs, this.look.x, this.look.z, dt, !p.alive);
+    this.updateLootHalos();
+    revealRoofs(this.roofs, this.look.x, this.look.z, dt);
     this.hud();
     this.just.clear();
-    const wantCam = !p.alive && this.mode === "play" ? 1 : 0;
-    this.camBlend += (wantCam - this.camBlend) * (1 - Math.exp(-dt * 3.4));
     this.shake = Math.max(0, this.shake - dt * 2.8);
+  }
+
+  private pulseHpHeal(from: number) {
+    this.hpHealFrom = from;
+    this.hpHealAt = this.elapsed;
+    document.getElementById("hp-wrap")?.classList.add("heal");
+  }
+
+  private clearHpHeal() {
+    this.hpHealAt = -99;
+    document.getElementById("hp-wrap")?.classList.remove("heal");
+  }
+
+  private hpBarPct(hp: number): number {
+    const dur = 0.55;
+    const u = (this.elapsed - this.hpHealAt) / dur;
+    if (this.hpHealAt < 0 || u >= 1) {
+      if (this.hpHealAt >= 0) this.clearHpHeal();
+      return Math.max(0, hp / PLAYER_HP) * 100;
+    }
+    const eased = 1 - (1 - Math.max(0, u)) ** 3;
+    const shown = this.hpHealFrom + (hp - this.hpHealFrom) * eased;
+    return Math.max(0, shown / PLAYER_HP) * 100;
   }
 
   private hud() {
     const p = this.player;
     document.getElementById("navy-clock")!.textContent = navyClock(this.elapsed);
-    document.getElementById("hp-bar")!.style.width = `${Math.max(0, (p.hp / PLAYER_HP) * 100)}%`;
+    const islandHud = document.getElementById("island-hud");
+    if (islandHud) islandHud.textContent = islandName(this.island);
+    const pct = Math.max(0, (p.hp / PLAYER_HP) * 100);
+    document.getElementById("hp-ghost")!.style.width = `${pct}%`;
+    document.getElementById("hp-bar")!.style.width = `${this.hpBarPct(p.hp)}%`;
     const ammo = p.primary ? ` · ${p.ammo} shot${p.ammo === 1 ? "" : "s"}` : "";
     const holster =
       !p.primary && p.bag ? ` · ${weaponName(p.bag)} holstered` : "";
     document.getElementById("weapon-line")!.textContent = `${weaponName(p.primary)}${ammo}${holster}`;
-    document.getElementById("trophy-line")!.textContent = `Trophy: ${trophyName(p.trophy)}`;
+    const icon = document.getElementById("weapon-icon") as HTMLImageElement;
+    icon.src = weaponArt(p.primary);
+    icon.classList.remove("hidden");
+    paintTrophyCard(document.getElementById("trophy-card")!, p.trophy);
+    this.syncExtractToast();
     document.getElementById("event-toast")!.textContent =
       this.elapsed < this.toastUntil ? this.toast : "";
     if (this.inspect && !this.inspect.alive) this.inspect = null;
@@ -1448,28 +2709,133 @@ export class Game {
         ? ` · ${this.inspect.ammo} shot${this.inspect.ammo === 1 ? "" : "s"}`
         : "";
       card.classList.remove("hidden");
-      document.getElementById("inspect-name")!.textContent = pirateCoat(this.inspect.color);
+      document.getElementById("inspect-name")!.textContent = this.inspect.pirate
+        ? PIRATE_NAMES[this.inspect.pirate]
+        : pirateCoat(this.inspect.color);
       document.getElementById("inspect-weapon")!.textContent = `${weaponName(this.inspect.primary)}${ammo}`;
-      document.getElementById("inspect-trophy")!.textContent = `Trophy: ${trophyName(this.inspect.trophy)}`;
+      document.getElementById("inspect-trophy")!.textContent = `Booty: ${trophyName(this.inspect.trophy)}`;
+      const art = document.getElementById("inspect-trophy-art") as HTMLImageElement;
+      if (this.inspect.trophy) {
+        art.src = trophyArt(this.inspect.trophy);
+        art.classList.remove("hidden");
+      } else {
+        art.removeAttribute("src");
+        art.classList.add("hidden");
+      }
     } else {
       card.classList.add("hidden");
+      const art = document.getElementById("inspect-trophy-art") as HTMLImageElement;
+      art.removeAttribute("src");
+      art.classList.add("hidden");
+    }
+  }
+
+  private mapOverview(): { x: number; z: number; height: number } {
+    const pad = 18;
+    const rects = mapFrameRects();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const r of rects) {
+      minX = Math.min(minX, r.x);
+      maxX = Math.max(maxX, r.x + r.w);
+      minZ = Math.min(minZ, r.z);
+      maxZ = Math.max(maxZ, r.z + r.d);
+    }
+    const halfW = (maxX - minX) / 2 + pad;
+    const halfD = (maxZ - minZ) / 2 + pad;
+    const vFov = (this.camera.fov * Math.PI) / 180;
+    const aspect = Math.max(0.2, this.camera.aspect || 1);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    const height = Math.max(halfD / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2));
+    return { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2, height };
+  }
+
+  private modalOpen(): boolean {
+    return !document.getElementById("overlay")!.classList.contains("hidden");
+  }
+
+  private wantOverview(): boolean {
+    if (this.modalOpen()) return true;
+    return Boolean(this.player) && !this.player.alive && this.mode === "play";
+  }
+
+  private updateCam(dt: number) {
+    const want = this.wantOverview() ? 1 : 0;
+    this.camBlend += (want - this.camBlend) * (1 - Math.exp(-dt * 3.4));
+    this.camZoom += (this.camZoomWant - this.camZoom) * (1 - Math.exp(-dt * 12));
+    if (!Number.isFinite(this.camYaw)) this.camYaw = Math.PI / 4;
+    this.updateCursorYaw(dt);
+  }
+
+  private clampZoom(z: number): number {
+    return Math.min(120 * MAP, Math.max(12, z));
+  }
+
+  private nudgeZoom(deltaY: number, deltaMode: number, pinch: boolean) {
+    const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? innerHeight : 1;
+    const k = pinch ? 0.012 : 0.0016;
+    this.camZoomWant = this.clampZoom(this.camZoomWant * Math.exp(deltaY * unit * k));
+  }
+
+  /**
+   * Polar angle of the cursor around screen center (the look target). Using the
+   * projected pirate as the pivot made the orbit chase itself and freeze.
+   */
+  private updateCursorYaw(dt: number) {
+    if (this.modalOpen() || this.mode !== "play" || !this.player) return;
+    const dx = this.mouse.x;
+    const dy = this.mouse.y;
+    if (dx * dx + dy * dy < 0.002) return;
+    const want = Math.atan2(dx, dy) + Math.PI / 4;
+    if (!Number.isFinite(want)) return;
+    let d = want - this.camYaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.camYaw += d * (1 - Math.exp(-dt * 16));
+    if (!Number.isFinite(this.camYaw)) this.camYaw = Math.PI / 4;
+  }
+
+  private pointerYaw(): number {
+    return Number.isFinite(this.camYaw) ? this.camYaw : Math.PI / 4;
+  }
+
+  /** XZ offset from the look point. Default zoom 40 matches 4× pirates at the old iso angle. */
+  private camOffset(dist: number): { x: number; z: number } {
+    const r = dist * Math.SQRT2;
+    const yaw = this.pointerYaw();
+    return { x: Math.sin(yaw) * r, z: Math.cos(yaw) * r };
+  }
+
+  private alignHpPips() {
+    const q = this.camera.quaternion;
+    if (this.player?.hpPip) this.player.hpPip.quaternion.copy(q);
+    for (const d of this.dummies) {
+      if (d.hpPip) d.hpPip.quaternion.copy(q);
     }
   }
 
   private draw() {
     const t = this.camBlend;
-    const x = this.look.x;
-    const z = this.look.z;
-    const dist = 22 + 10 * t;
-    const height = 28 + 14 * t;
-    const j = this.shake;
+    const spec = this.mapOverview();
+    const x = this.look.x + (spec.x - this.look.x) * t;
+    const z = this.look.z + (spec.z - this.look.z) * t;
+    const zoom = this.camZoom;
+    const dist = zoom * (1 - t);
+    const height = zoom * 1.3 + (spec.height - zoom * 1.3) * t;
+    const off = this.camOffset(dist);
+    const j = this.shake * (1 - t);
     const jx = j ? (Math.random() - 0.5) * 1.4 * j : 0;
     const jy = j ? (Math.random() - 0.5) * 0.8 * j : 0;
-    this.camera.position.set(x + dist + jx, height + jy, z + dist);
-    this.camera.lookAt(x, 0.5, z);
+    this.camera.up.set(0, 1 - t, -t);
+    this.camera.up.normalize();
+    this.camera.position.set(x + off.x + jx, height + jy, z + off.z);
+    this.camera.lookAt(x, 0.5 * UNIT * (1 - t), z);
+    this.alignHpPips();
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = 70 + 20 * t;
-    fog.far = 160 + 60 * t;
+    fog.near = 7 * zoom * (1 - t) + spec.height * 0.35 * t;
+    fog.far = 16 * zoom * (1 - t) + spec.height * 2.2 * t;
     this.renderer.render(this.scene, this.camera);
   }
 }

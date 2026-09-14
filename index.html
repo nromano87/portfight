@@ -4,44 +4,105 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PortFight — Harbor graybox</title>
+    <meta name="theme-color" content="#0d1418" />
+    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="game-root"></div>
     <div id="hud">
-      <div id="portrait" class="dockhand" title="Dockhand PFP"></div>
+      <div id="portrait-wrap">
+        <div id="portrait" title="Rustbeard"></div>
+        <div id="portrait-name">Rustbeard</div>
+      </div>
       <div id="clock-block">
-        <div id="navy-clock">10:00</div>
+        <div id="island-hud">Gull Harbor</div>
+        <div id="navy-clock">5:00</div>
         <div id="navy-label">Navy clock</div>
       </div>
       <div id="hud-right">
         <div id="vitals">
-          <div id="hp-wrap"><div id="hp-bar"></div></div>
-          <div id="weapon-line">Cutlass</div>
-          <div id="trophy-line">Trophy: —</div>
+          <div id="hp-wrap"><div id="hp-ghost"></div><div id="hp-bar"></div></div>
+          <div id="weapon-line-row">
+            <img id="weapon-icon" alt="" />
+            <div id="weapon-line">Cutlass</div>
+          </div>
+          <div id="trophy-card" class="trophy-card empty">
+            <div class="trophy-portrait">
+              <span class="trophy-held"></span>
+              <span class="trophy-rarity"></span>
+            </div>
+          </div>
         </div>
         <div id="inspect" class="hidden">
           <div id="inspect-name">Pirate</div>
           <div id="inspect-weapon">Cutlass</div>
-          <div id="inspect-trophy">Trophy: —</div>
+          <div id="inspect-trophy-row">
+            <img id="inspect-trophy-art" alt="" class="hidden" />
+            <div id="inspect-trophy">Booty: —</div>
+          </div>
         </div>
       </div>
       <div id="event-toast"></div>
     </div>
+    <div id="extract-toast" class="hidden">
+      <span id="extract-toast-msg"></span>
+      <button id="extract-toast-close" type="button" aria-label="Dismiss">×</button>
+    </div>
     <div id="prompt"></div>
     <div id="minimap-legend">
-      WASD move · mouse aim · click to swing / fire · Q holster gun · 1 cutlass · 2 gun · E
-      pick up / extract · R restart
+      WASD move · Space jump · auto-attack in the gold circle · Q holster gun · 1 cutlass · 2 gun · F
+      pick up · E open / reload · hold E extract · two-finger scroll zoom
     </div>
     <div id="overlay" class="hidden">
-      <div class="panel">
-        <h1 id="overlay-title">Extracted</h1>
-        <p id="overlay-body"></p>
-        <p id="stash-line"></p>
-        <button id="craft-btn" class="hidden">Craft Dockhand colorway (5 junk)</button>
-        <button id="again-btn">Back into the harbor</button>
+      <div class="panel" id="overlay-panel">
+        <div class="panel-inner">
+          <div class="panel-face front">
+            <div id="island-block" class="hidden">
+              <h2 class="panel-heading">Sail to the next island</h2>
+              <div id="island-picks"></div>
+            </div>
+            <div id="stash-block" class="hidden">
+              <h2 class="panel-heading">Your items</h2>
+              <div id="stash-shelf"></div>
+            </div>
+            <h1 id="overlay-title">Extracted</h1>
+            <p id="overlay-body"></p>
+            <p id="stash-line"></p>
+            <div id="extract-trophy" class="trophy-card empty">
+              <div class="trophy-portrait">
+                <span class="trophy-held"></span>
+                <span class="trophy-rarity"></span>
+              </div>
+            </div>
+            <div id="select-pane" class="hidden">
+              <p id="skins-line"></p>
+              <div id="owned-skins"></div>
+              <button id="craft-toggle" type="button">Craftable Skins</button>
+            </div>
+            <button id="again-btn">Enter the harbor</button>
+          </div>
+          <div class="panel-face back">
+            <h1>Craftable skins</h1>
+            <p id="craft-sub">Each skin wants named booty from a specific island.</p>
+            <div id="craft-list"></div>
+            <button id="craft-back" type="button">Back</button>
+          </div>
+        </div>
+      </div>
+      <div id="craft-pop" class="hidden">
+        <div class="craft-pop-card">
+          <button type="button" id="craft-pop-close" aria-label="Close">×</button>
+          <div id="craft-pop-face" class="pick-face"></div>
+          <h2 id="craft-pop-name"></h2>
+          <p id="craft-pop-blurb" class="hidden"></p>
+          <div id="craft-pop-need"></div>
+          <button type="button" id="craft-pop-btn">Craft</button>
+        </div>
       </div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/main.ts?v=islands"></script>
   </body>
 </html>

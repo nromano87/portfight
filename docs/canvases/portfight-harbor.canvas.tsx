@@ -107,12 +107,12 @@ export default function PortFightHarbor() {
       <Stack gap={8}>
         <H1>PortFight — The Harbor</H1>
         <Text tone="secondary">
-          One map for v1. Eight pirates. Ten minutes. Two dock extracts and a
-          late fort bell. Crates are placed so long guns own the piers and
-          cutlasses own The Grog. Art: Pirate Nation voxels for pirates,
-          Glitterfin ships for extracts, Lurker Chest for lockboxes, combat
-          cards for weapon icons. The buildings themselves are graybox we
-          dress later.
+          Gull Harbor (island 1). Eight pirates. Five minutes. Two dock
+          extracts and a late fort bell. Later islands keep the same extract
+          rules on different silhouettes — a north-south spit, an east cove,
+          a lagoon ring, and a stone L. Art: Pirate Nation voxels for pirates,
+          island buildings, and terrain tiles; Glitterfin ships for extracts,
+          Lurker Chest for lockboxes, combat cards for weapon icons.
         </Text>
       </Stack>
 

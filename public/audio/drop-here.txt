@@ -1,0 +1,15 @@
+Drop wavs here. Names to use:
+
+cutlass-swing.wav
+cutlass-hit.wav
+flintlock.wav
+musket.wav
+reload.wav
+hurt.wav
+death.wav
+open.wav
+pickup.wav
+extract.wav
+harbor.wav
+harbor-theme.wav
+navy-sting.wav

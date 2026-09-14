@@ -309,7 +309,7 @@ function Rules() {
           ],
           [
             "Extract",
-            "Whatever is in the slot goes to stash. The gun does not. Ammo does not.",
+            "Slot goes to stash. Guns stay. A successful extract unlocks the next island and puts you there. You can still pick any unlocked island.",
           ],
           [
             "Die on the gangplank",
@@ -368,12 +368,10 @@ function Skins() {
 
       <H2>What a skin is</H2>
       <Text>
-        One finished portrait — not a hat SKU, not a layer marketplace.
-        Pirate Nation already has Founder Pirate PFPs and avatar busts;
-        we composite those into a square. That square is your lobby face,
-        kill-feed picture, and shareable PFP. In the match, v1 can be a
-        tinted pirate plus a hat/glow that matches the portrait. If the
-        3D does not read as the PFP, people feel cheated when they buy.
+        One finished Pirate Nation pirate skin — Sir Clankalot, Stargazer,
+        Barrel, Anubis — not a hat SKU. That square is your lobby face,
+        kill-feed picture, and shareable PFP. In the match it tints you
+        and sits on your chest so the 3D reads as the portrait.
       </Text>
       <Grid columns={2} gap={16}>
         <Card>
@@ -398,58 +396,74 @@ function Skins() {
         </Card>
       </Grid>
 
-      <H2>Six recipes, published</H2>
+      <H2>Five islands, named recipes</H2>
       <Text tone="secondary">
-        If a recipe is not on this list, it does not exist. No mystery
-        crafts. Trophies are consumed. No refund.
+        Extracting from island N unlocks N+1 and sails you there. Each
+        island has its own map. You can still pick any unlocked island to
+        farm. An island drops its own items plus every earlier island’s
+        table. Blackwater is the only source of Iron Sights, Iron Cannon, and
+        Iron Armor — the last pieces for Skeleton Limited, Ghost Limited,
+        and Black Knight Spirit.
       </Text>
       <Table
-        headers={["Skin", "Tier", "Consume", "Notes"]}
-        rowTone={["neutral", "info", "info", "warning", "success", "danger"]}
+        headers={["Island", "First drops here", "Skins that need this island"]}
+        rowTone={["info", "info", "warning", "success", "danger"]}
         striped
         rows={[
           [
-            "Dockhand colorway",
-            "Common",
-            "5 junk",
-            "The junk sink. Recolor of the default. Lists for almost nothing. Still better than listing rope.",
+            "1 Gull Harbor",
+            "Wood, Cotton, Flax, Wooden Oar, Cotton Net",
+            "Barrel, Cat Pajama, Hot Dog, Scarecrow",
           ],
           [
-            "Harbor Regular",
-            "Uncommon",
-            "3 uncommon relics (dupes OK)",
-            "Portrait leans on the relic you used most (tankard → Chompington-ish). The peel craft will happen. Let it.",
+            "2 Wren Reach",
+            "Iron Ore, Hemp Rope, Spyglass",
+            "Sir Clankalot, Stargazer, Skeleton, Samurai, Deep Diver, Ice Queen",
           ],
           [
-            "Named Captain",
-            "Rare",
-            "1 rare relic + 2 junk",
-            "Spyglass → Ironsides, locket → Banshee, hook → Rustbeard, compass → High Tide. One face per relic type.",
+            "3 Copper Cay",
+            "Copper Ore, Iron Anchor, Compass",
+            "Squidly, Anubis",
           ],
           [
-            "Keep Captain",
-            "Epic",
-            "1 Keep Seal + 1 any relic",
-            "Gold frame. Provenance: keep extract. The greedy east run’s actual payoff.",
+            "4 Oak Atoll",
+            "Oak Wood, Mermaid Scale, Cotton Sail, Wooden Helm",
+            "Anubis Gold",
           ],
           [
-            "Navy Commission",
-            "Legendary",
-            "1 Navy Seal + 1 rare relic",
-            "Stamped with match id. The only skin that should ever be expensive. Horn-to-PFP.",
+            "5 Blackwater",
+            "Iron Sights, Iron Cannon, Iron Armor",
+            "Skeleton Limited, Ghost Limited, Black Knight Spirit",
           ],
-          [
-            "Cabinet portrait",
-            "Legendary (set)",
-            "5 different named relics (the lore set)",
-            "Duplicate sink. Title on the PFP. No seal required so collectors have a second legendary path.",
-          ],
+        ]}
+      />
+      <Table
+        headers={["Skin", "Tier", "Consume"]}
+        rowTone={["info", "info", "info", "info", "warning", "warning", "warning", "warning", "warning", "warning", "success", "success", "success", "danger", "danger", "danger"]}
+        striped
+        rows={[
+          ["Barrel", "Uncommon", "Wooden Oar"],
+          ["Cat Pajama", "Uncommon", "Cotton Net"],
+          ["Hot Dog", "Uncommon", "Cotton"],
+          ["Scarecrow", "Uncommon", "Wood"],
+          ["Sir Clankalot", "Rare", "Spyglass + Wood"],
+          ["Stargazer", "Rare", "Hemp Rope + Cotton"],
+          ["Skeleton", "Rare", "Iron Ore + Flax"],
+          ["Samurai", "Rare", "Spyglass + Wooden Oar"],
+          ["Deep Diver", "Rare", "Hemp Rope + Cotton Net"],
+          ["Ice Queen", "Rare", "Iron Ore + Wooden Oar"],
+          ["Squidly", "Epic", "Compass + Hemp Rope"],
+          ["Anubis", "Legendary", "Iron Anchor + Spyglass"],
+          ["Anubis Gold", "Legendary", "Mermaid Scale + Wooden Helm"],
+          ["Skeleton Limited", "Legendary", "Iron Sights + Compass"],
+          ["Ghost Limited", "Legendary", "Iron Cannon + Mermaid Scale"],
+          ["Black Knight Spirit", "Legendary", "Iron Armor + Cotton Sail + Spyglass"],
         ]}
       />
 
       <Callout tone="warning" title="What we will not do">
-        Five junk cannot make a captain. The house cannot sell Ironsides.
-        Relics and seals cannot list — only the skin they become. Founder
+        Five junk cannot make a captain. The house cannot sell Clankalot.
+        Reagents and ship parts cannot list — only the skin they become. Founder
         Pirate NFTs are an optional lobby body, not a recipe ingredient,
         or you have just gated cosmetics behind a wallet.
       </Callout>
@@ -507,17 +521,17 @@ function Later() {
             "If the counter sells Ironsides, nobody runs the galleon.",
           ],
           [
-            "Dockhand colorways (cheap)",
+            "Gull Harbor skins (cheap)",
             "Barrel junk as a listing",
-            "Five rope → a common PFP is the sink. Rope itself never lists.",
+            "One island-1 item → a costume is the sink. Wood itself never lists.",
           ],
         ]}
       />
       <Text>
-        Supply: most matches still produce almost no named relics. Common
-        colorways will be cheap. Navy Commissions stay rare because the
-        Strongbox is 35% of matches and then someone has to extract with
-        it and then burn it. That is the skin you actually want in a shop.
+        Supply: most matches still produce almost no named relics. Gull
+        Harbor skins will be cheap. Black Knight Spirit stays the listing
+        you actually want — Iron Armor only drops on Blackwater, plus a
+        Cotton Sail from Oak Atoll and a Spyglass from Wren Reach on.
       </Text>
       <Divider />
       <H3>What we still do not spec</H3>
