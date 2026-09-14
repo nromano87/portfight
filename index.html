@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PortFight — Harbor graybox</title>
+    <title>PortFight — Alpha</title>
     <meta name="theme-color" content="#0d1418" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180" />
@@ -11,6 +11,26 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <div id="desktop-gate">
+      <div class="gate-panel">
+        <p class="gate-kicker">Desktop only — for now</p>
+        <h1>PortFight</h1>
+        <p>
+          A five-minute pirate extraction brawl. You walk a harbor, swing a cutlass,
+          steal a flintlock off a body, and run for the extraction plank before the Navy
+          clock hits zero. Booty you extract crafts into Pirate Nation skins. Die
+          and it stays on the dock.
+        </p>
+        <p>
+          Open this on a computer. Use WASD and a mouse.
+        </p>
+        <p class="art-credit">
+          Art from
+          <a href="https://github.com/proofofplay/piratenation-art" target="_blank" rel="noreferrer">Proof of Play's Pirate Nation</a>
+          (CC0).
+        </p>
+      </div>
+    </div>
     <div id="game-root"></div>
     <div id="hud">
       <div id="portrait-wrap">
@@ -56,22 +76,23 @@
       WASD move · Space jump · auto-attack in the gold circle · Q holster gun · 1 cutlass · 2 gun · F
       pick up · E open / reload · hold E extract · two-finger scroll zoom
     </div>
-    <div id="overlay" class="hidden">
+    <div id="overlay">
       <div class="panel" id="overlay-panel">
         <div class="panel-inner">
           <div class="panel-face front">
             <div id="island-block" class="hidden">
               <h2 class="panel-heading">Sail to the next island</h2>
+              <p id="island-loot-note">Each island adds the booty on its row. Later islands still drop everything from earlier ones.</p>
               <div id="island-picks"></div>
             </div>
             <div id="stash-block" class="hidden">
               <h2 class="panel-heading">Your items</h2>
               <div id="stash-shelf"></div>
             </div>
-            <h1 id="overlay-title">Extracted</h1>
-            <p id="overlay-body"></p>
-            <p id="stash-line"></p>
-            <div id="extract-trophy" class="trophy-card empty">
+            <h1 id="overlay-title" class="select-heading">Choose your pirate</h1>
+            <p id="overlay-body" class="hidden"></p>
+            <p id="stash-line" class="hidden"></p>
+            <div id="extract-trophy" class="trophy-card empty hidden">
               <div class="trophy-portrait">
                 <span class="trophy-held"></span>
                 <span class="trophy-rarity"></span>
@@ -80,18 +101,22 @@
             <div id="select-pane" class="hidden">
               <p id="skins-line"></p>
               <div id="owned-skins"></div>
-              <button id="craft-toggle" type="button">Craftable Skins</button>
             </div>
-            <button id="again-btn">Enter the harbor</button>
+            <button id="again-btn" disabled>Loading the harbor…</button>
           </div>
           <div class="panel-face back">
             <h1>Craftable skins</h1>
-            <p id="craft-sub">Each skin wants named booty from a specific island.</p>
+            <p id="craft-sub">Each skin is craftable using named booty from a specific island.</p>
             <div id="craft-list"></div>
             <button id="craft-back" type="button">Back</button>
           </div>
         </div>
       </div>
+      <p class="art-credit">
+        Art from
+        <a href="https://github.com/proofofplay/piratenation-art" target="_blank" rel="noreferrer">Proof of Play's Pirate Nation</a>
+        (CC0).
+      </p>
       <div id="craft-pop" class="hidden">
         <div class="craft-pop-card">
           <button type="button" id="craft-pop-close" aria-label="Close">×</button>
@@ -103,6 +128,6 @@
         </div>
       </div>
     </div>
-    <script type="module" src="/src/main.ts?v=islands"></script>
+    <script type="module" src="/src/main.ts?v=empty-gun"></script>
   </body>
 </html>

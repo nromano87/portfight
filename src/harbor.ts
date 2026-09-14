@@ -675,6 +675,37 @@ function fillSpawns() {
   }
 }
 
+function sampleWharf(r: Rect): { x: number; z: number }[] {
+  const pts: { x: number; z: number }[] = [];
+  const step = 3.2 * MAP;
+  const pad = 2.4 * MAP;
+  for (let x = r.x + pad; x < r.x + r.w - pad; x += step) {
+    for (let z = r.z + pad; z < r.z + r.d - pad; z += step) {
+      if (onExtract(x, z)) continue;
+      if (inBuilding(x, z)) continue;
+      if (!walkClear(x, z, 1.5 * MAP)) continue;
+      pts.push({ x, z });
+    }
+  }
+  return pts;
+}
+
+function crateOnWharf(pier: Rect, existing: { x: number; z: number }[]): { x: number; z: number } | null {
+  const pts = sampleWharf(pier);
+  if (pts.length) {
+    const hit = farthest(pts, 1, existing)[0];
+    if (hit) return hit;
+  }
+  const mid = { x: pier.x + pier.w / 2, z: pier.z + pier.d / 2 };
+  for (const dist of [0, 5, 9, 13, 18]) {
+    const p = dist ? inlandOf(mid, dist * MAP) : mid;
+    if (inRect(p.x, p.z, pier, -1.2) && !onExtract(p.x, p.z) && walkClear(p.x, p.z, 1.4 * MAP)) {
+      return p;
+    }
+  }
+  return null;
+}
+
 function fillLoot() {
   LOOT_SPOTS.length = 0;
   const deck = sampleDeck(4.2 * MAP);
@@ -686,8 +717,15 @@ function fillLoot() {
   }
   const extraBarrels = farthest(pool, 8, LOOT_SPOTS);
   extraBarrels.forEach((p, i) => LOOT_SPOTS.push({ id: `B${9 + i}`, kind: "barrel", x: p.x, z: p.z }));
-  const crates = farthest(pool, 8, LOOT_SPOTS);
+  const crates = farthest(pool, 10, LOOT_SPOTS);
   crates.forEach((p, i) => LOOT_SPOTS.push({ id: `U${i + 1}`, kind: "crate", x: p.x, z: p.z }));
+  let crateN = crates.length;
+  for (const pier of [NORTH_PIER, SOUTH_PIER]) {
+    const p = crateOnWharf(pier, LOOT_SPOTS);
+    if (!p) continue;
+    crateN += 1;
+    LOOT_SPOTS.push({ id: `U${crateN}`, kind: "crate", x: p.x, z: p.z });
+  }
   const dock = { x: DOCKS.x + DOCKS.w / 2, z: DOCKS.z + DOCKS.d / 2 };
   const lock = inlandOf(dock, 8 * MAP);
   LOOT_SPOTS.push({ id: "R2", kind: "lockbox", x: lock.x, z: lock.z });
@@ -753,10 +791,13 @@ function canStand(x: number, z: number): boolean {
   return onDeck(x, z);
 }
 
-function nudgeClear(x: number, z: number, r: number): { x: number; z: number } | null {
+function nudgeClear(x: number, z: number, r: number, bound?: Rect): { x: number; z: number } | null {
   const tryAt = (nx: number, nz: number) => {
+    if (bound && !inRect(nx, nz, bound, -1.2)) return null;
+    if (bound && onExtract(nx, nz)) return null;
     const p = outsideWalls(nx, nz);
     if (!canStand(p.x, p.z) || footHits(p.x, p.z, r)) return null;
+    if (bound && !inRect(p.x, p.z, bound, -1.2)) return null;
     return p;
   };
   const here = tryAt(x, z);
@@ -790,7 +831,14 @@ function layoutLoot(): LootSpot[] {
   laidLoot = [];
   for (const s of LOOT_SPOTS) {
     const r = lootRadius(s.kind);
-    const p = nudgeClear(s.x, s.z, r) ?? outsideWalls(s.x, s.z);
+    const bound = inRect(s.x, s.z, NORTH_PIER, 0.5)
+      ? NORTH_PIER
+      : inRect(s.x, s.z, SOUTH_PIER, 0.5)
+        ? SOUTH_PIER
+        : undefined;
+    const p =
+      nudgeClear(s.x, s.z, r, bound) ??
+      (bound ? { x: s.x, z: s.z } : outsideWalls(s.x, s.z));
     laidLoot.push({ ...s, ...p });
     claimFoot(p.x, p.z, r);
     solidLoot(p.x, p.z, s.kind);

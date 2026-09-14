@@ -1,6 +1,6 @@
 # PortFight
 
-Browser graybox of the 5-minute harbor extraction brawl. First slice: walk the port, cutlass / flintlock / musket, body loot, extract, craft Pirate Nation skins.
+Browser alpha of the 5-minute harbor extraction brawl. Walk the port, cutlass / flintlock / musket, body loot, extract, craft Pirate Nation skins.
 
 ## Run
 
@@ -29,7 +29,7 @@ Matches last **5:00**. The HUD counts down from 5:00 to 0:00:
 - **1:00** — Fort Bell opens.
 - **0:00** — ships leave. If you are not on a green extract, the Navy screen.
 
-You spawn west of **The Grog**. Seven other pirates spawn on the rim. The Gull and The Wren drift in from the sea and dock at **2:00**. Every pirate gets one starter barrel ~6m away; **B5** is on the north warehouse apron and **B16** is in the fort yard. Crates, the galleon lockbox, the keep chest, and ten trophy chests (**T1–T10**) are inland. Crate **U1** in the north warehouse is a flintlock. Lockbox **R2** on the galleon is a musket. Gold chest **E1** in the fort is a ship part (Cotton Sail, Wooden Helm, Iron Sights, Iron Cannon, or Iron Armor). Trophy chests drop Pirate Nation crafting reagents only — Wood, Cotton, Iron Ore up through Spyglass / Compass / Mermaid Scale. No guns.
+You spawn west of **The Grog**. Seven other pirates spawn on the rim. The Gull and The Wren drift in from the sea and dock at **2:00**. Every pirate gets one starter barrel ~6m away; **B5** is on the north warehouse apron and **B16** is in the fort yard. Each pier always has a crate. More crates, the galleon lockbox, the keep chest, and ten trophy chests (**T1–T10**) are inland. Lockbox **R2** on the galleon is a musket. Gold chest **E1** in the fort is a ship part (Cotton Sail, Wooden Helm, Iron Sights, Iron Cannon, or Iron Armor). Trophy chests drop Pirate Nation crafting reagents only — Wood, Cotton, Iron Ore up through Spyglass / Compass / Mermaid Scale. No guns.
 
 Guns stay in the harbor. Extract a named reagent and craft it into a Pirate Nation pirate skin (HUD PFP and in-match body). Progress stays in this browser.
 

@@ -115,6 +115,11 @@ export const TROPHY: Record<TrophyId, { name: string; tier: TrophyTier; color: n
   "iron-armor": { name: "Iron Armor", tier: 4, color: 0x8a9098, island: 5 },
 };
 
+/** Booty that first appears on this island. Later islands still drop these. */
+export function trophiesFirstOn(island: IslandId): TrophyId[] {
+  return (Object.keys(TROPHY) as TrophyId[]).filter((id) => TROPHY[id].island === island);
+}
+
 export const T1_IDS: TrophyId[] = ["wood", "cotton", "iron-ore", "flax", "copper-ore", "oak-wood"];
 export const T2_IDS: TrophyId[] = ["wooden-oar", "cotton-net", "iron-anchor", "hemp-rope"];
 export const T3_IDS: TrophyId[] = ["spyglass", "compass", "mermaid-scale"];

@@ -68,6 +68,8 @@ import {
   nextIsland,
   rectCenter,
   rollTrophy,
+  TROPHY,
+  trophiesFirstOn,
   trophyName,
   trophyRarity,
   trophyRarityColor,
@@ -282,19 +284,19 @@ function hintSprite(text: string, color: string): THREE.Sprite {
   let tex = HINT_TEX.get(key);
   if (!tex) {
     const c = document.createElement("canvas");
-    c.width = 768;
-    c.height = 160;
+    c.width = 896;
+    c.height = 192;
     const g = c.getContext("2d")!;
-    g.clearRect(0, 0, 768, 160);
-    g.font = "700 78px Palatino, serif";
+    g.clearRect(0, 0, 896, 192);
+    g.font = "700 100px Palatino, serif";
     g.textAlign = "center";
     g.textBaseline = "middle";
     g.lineJoin = "round";
     g.strokeStyle = "rgba(13, 20, 24, 0.92)";
-    g.lineWidth = 18;
-    g.strokeText(text, 384, 80);
+    g.lineWidth = 22;
+    g.strokeText(text, 448, 96);
     g.fillStyle = color;
-    g.fillText(text, 384, 80);
+    g.fillText(text, 448, 96);
     tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     HINT_TEX.set(key, tex);
@@ -307,7 +309,7 @@ function hintSprite(text: string, color: string): THREE.Sprite {
       depthWrite: false,
     }),
   );
-  s.scale.set(10.2, 2.15, 1);
+  s.scale.set(13, 2.75, 1);
   s.center.set(0.5, 0);
   s.renderOrder = 9;
   return s;
@@ -500,7 +502,7 @@ export class Game {
   private playerAim!: RangeRing;
   private inspect: Fighter | null = null;
   private look = { x: 0, z: 0 };
-  private camBlend = 0;
+  private camBlend = 1;
   private camYaw = Math.PI / 4;
   private camZoom = 40 * MAP;
   private camZoomWant = 40 * MAP;
@@ -534,8 +536,7 @@ export class Game {
     this.bind();
     this.applyHudSkin();
     this.resize();
-    this.camera.position.set(40, 52, 40);
-    this.camera.lookAt(0, 0.5 * UNIT, 0);
+    this.showSelect();
     this.last = performance.now();
     requestAnimationFrame(this.frame);
     void this.boot();
@@ -675,6 +676,11 @@ export class Game {
       this.persist();
     };
     document.getElementById("owned-skins")!.onclick = (e) => {
+      const more = (e.target as HTMLElement).closest("button[data-craft-open]");
+      if (more) {
+        this.showCraft();
+        return;
+      }
       const pirateBtn = (e.target as HTMLElement).closest("button[data-pick-pirate]");
       if (pirateBtn) {
         this.equipPirate(pirateBtn.getAttribute("data-pick-pirate") as PirateId);
@@ -684,7 +690,6 @@ export class Game {
       if (!btn) return;
       this.equipSkin(btn.getAttribute("data-equip") as SkinId);
     };
-    document.getElementById("craft-toggle")!.onclick = () => this.showCraft();
     document.getElementById("craft-back")!.onclick = () => this.showSelect();
     document.getElementById("craft-list")!.onclick = (e) => {
       const btn = (e.target as HTMLElement).closest("button[data-craft]") as HTMLButtonElement | null;
@@ -758,7 +763,7 @@ export class Game {
         sizeAttenuation: true,
       }),
     );
-    sprite.scale.set(0.7 * UNIT * PIRATE_SCALE, 0.7 * UNIT * PIRATE_SCALE, 1);
+    sprite.scale.set(2.1 * UNIT * PIRATE_SCALE, 2.1 * UNIT * PIRATE_SCALE, 1);
     sprite.visible = false;
     sprite.renderOrder = 10;
     this.scene.add(sprite);
@@ -949,7 +954,9 @@ export class Game {
       5,
     );
     const emptyCrates = pickIds(
-      this.containers.filter((c) => c.spot.kind === "crate").map((c) => c.spot.id),
+      this.containers
+        .filter((c) => c.spot.kind === "crate" && !pierWithoutShip(c.spot.x, c.spot.z))
+        .map((c) => c.spot.id),
       3,
     );
     for (const c of this.containers) {
@@ -1107,7 +1114,7 @@ export class Game {
     if (f.trophyIcon) {
       const held = f.alive && !!f.trophy;
       f.trophyIcon.visible = held;
-      f.trophyIcon.position.set(f.x, f.y + 2.62 * UNIT * PIRATE_SCALE, f.z);
+      f.trophyIcon.position.set(f.x, f.y + 3.32 * UNIT * PIRATE_SCALE, f.z);
       if (held && f.trophy) {
         const mat = f.trophyIcon.material;
         if (mat.map !== this.trophyTexture(f.trophy)) {
@@ -1347,6 +1354,9 @@ export class Game {
     if (!melee) {
       f.ammo -= 1;
       f.cooldown = f.primary === "musket" ? 1.15 : 0.55;
+      if (!f.dummy && f.ammo <= 0) {
+        this.flash("Gun empty. Press E at a yellow crate to reload, or 1 for cutlass.");
+      }
     } else {
       f.cooldown = f.dummy ? DUMMY_MELEE_COOLDOWN : MELEE_COOLDOWN;
     }
@@ -1733,7 +1743,11 @@ export class Game {
     document.getElementById("extract-trophy")!.classList.add("hidden");
     document.getElementById("island-block")!.classList.remove("hidden");
     document.getElementById("select-pane")!.classList.remove("hidden");
-    document.getElementById("again-btn")!.textContent = `Enter ${islandName(this.island)}`;
+    document.getElementById("again-btn")!.textContent = this.ready
+      ? `Enter ${islandName(this.island)}`
+      : "Loading the harbor…";
+    (document.getElementById("again-btn") as HTMLButtonElement).disabled = !this.ready;
+    this.camBlend = 1;
     this.renderStash();
     this.renderIslands();
     this.renderOwned();
@@ -1777,6 +1791,18 @@ export class Game {
       btn.append(face, label);
       root.appendChild(btn);
     }
+    const more = this.pickCard(false);
+    more.dataset.craftOpen = "1";
+    more.classList.add("craft-more");
+    more.title = "Craftable skins";
+    const moreFace = document.createElement("span");
+    moreFace.className = "pick-face";
+    moreFace.textContent = "…";
+    const moreLabel = document.createElement("span");
+    moreLabel.className = "pick-label";
+    moreLabel.textContent = "Craft";
+    more.append(moreFace, moreLabel);
+    root.appendChild(more);
     for (const id of Object.keys(SKINS) as SkinId[]) {
       if (!this.owned.has(id)) continue;
       const skin = SKINS[id];
@@ -1806,17 +1832,58 @@ export class Game {
       const locked = id > this.unlocked;
       btn.classList.toggle("equipped", id === this.island && !locked);
       btn.classList.toggle("locked", locked);
-      btn.disabled = locked;
-      btn.title = locked ? `Extract from ${islandName((id - 1) as IslandId)} to unlock` : ISLANDS[id].name;
+      btn.setAttribute("aria-disabled", locked ? "true" : "false");
+      const name = ISLANDS[id].name;
+      btn.title = locked ? `Extract from ${islandName((id - 1) as IslandId)} to unlock ${name}` : name;
+      const meta = document.createElement("span");
+      meta.className = "island-meta";
       const num = document.createElement("span");
       num.className = "island-num";
       num.textContent = String(id);
       const label = document.createElement("span");
       label.className = "island-name";
-      label.textContent = locked ? "Locked" : ISLANDS[id].name;
-      btn.append(num, label);
+      label.textContent = locked ? "Locked" : name;
+      meta.append(num, label);
+      const loot = document.createElement("span");
+      loot.className = "island-loot";
+      const lootLabel = document.createElement("span");
+      lootLabel.className = "island-drops-label";
+      lootLabel.textContent = "Available items:";
+      const drops = document.createElement("span");
+      drops.className = "island-drops";
+      for (const tid of trophiesFirstOn(id)) {
+        drops.append(this.islandDropChip(tid, locked));
+      }
+      loot.append(lootLabel, drops);
+      btn.append(meta, loot);
       root.appendChild(btn);
     }
+  }
+
+  private islandDropChip(tid: TrophyId, locked: boolean): HTMLSpanElement {
+    const edge = trophyRarityColor(tid);
+    const chip = document.createElement("span");
+    chip.className = "island-drop";
+    chip.style.borderColor = edge;
+    const where = islandName(TROPHY[tid].island);
+    chip.title = locked
+      ? `${trophyName(tid)} · ${where}`
+      : `${trophyName(tid)} · ${trophyRarity(tid)} · ${where}`;
+    const art = document.createElement("span");
+    art.className = "island-drop-art";
+    art.style.backgroundImage = `url("${trophyArt(tid)}")`;
+    const tip = document.createElement("span");
+    tip.className = "stash-tip";
+    const tipName = document.createElement("span");
+    tipName.className = "stash-tip-name";
+    tipName.textContent = trophyName(tid);
+    const tipRarity = document.createElement("span");
+    tipRarity.className = "stash-tip-rarity";
+    tipRarity.textContent = `${trophyRarity(tid)} · ${where}`;
+    tipRarity.style.color = edge;
+    tip.append(tipName, tipRarity);
+    chip.append(art, tip);
+    return chip;
   }
 
   private renderCraft() {
@@ -1961,7 +2028,7 @@ export class Game {
       tipName.textContent = trophyName(tid);
       const tipRarity = document.createElement("span");
       tipRarity.className = "stash-tip-rarity";
-      tipRarity.textContent = trophyRarity(tid);
+      tipRarity.textContent = `${trophyRarity(tid)} · ${islandName(TROPHY[tid].island)}`;
       tipRarity.style.color = edge;
       tip.append(tipName, tipRarity);
       chip.append(img, n, tip);
