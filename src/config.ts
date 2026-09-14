@@ -1,3 +1,5 @@
+import { asset } from "./asset";
+
 /** Put every craftable skin on the picker. Leave off so extract → craft is the loop. */
 export const UNLOCK_ALL_SKINS = false;
 
@@ -191,13 +193,13 @@ export function trophyColor(id: TrophyId): number {
 }
 
 export function trophyArt(id: TrophyId): string {
-  return `/art/trophies/${id}.png`;
+  return asset(`/art/trophies/${id}.png`);
 }
 
 export function weaponArt(id: WeaponId | null): string {
-  if (id === "flintlock") return "/art/weapons/flintlock.png";
-  if (id === "musket") return "/art/weapons/musket.png";
-  return "/art/weapons/cutlass.png";
+  if (id === "flintlock") return asset("/art/weapons/flintlock.png");
+  if (id === "musket") return asset("/art/weapons/musket.png");
+  return asset("/art/weapons/cutlass.png");
 }
 
 export function trophyTier(id: TrophyId): TrophyTier {

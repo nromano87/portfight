@@ -11,6 +11,8 @@ npm run dev
 
 Open the URL Vite prints (usually http://localhost:5173).
 
+Live alpha: https://nromano87.github.io/portfight/
+
 ## Controls
 
 - **WASD** move (when down: pan the camera to watch the match)

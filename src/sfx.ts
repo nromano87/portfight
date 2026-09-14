@@ -1,3 +1,4 @@
+import { assets } from "./asset";
 import { UNIT } from "./config";
 
 let ctx: AudioContext | null = null;
@@ -10,7 +11,7 @@ type Loop = { src: AudioBufferSourceNode; gain: GainNode };
 let theme: Loop | null = null;
 let bed: Loop | null = null;
 
-const FILES: Record<string, string> = {
+const FILES: Record<string, string> = assets({
   swing: "/audio/cutlass-swing.wav",
   hit: "/audio/cutlass-hit.wav",
   flintlock: "/audio/flintlock.wav",
@@ -24,7 +25,7 @@ const FILES: Record<string, string> = {
   harbor: "/audio/harbor.wav",
   theme: "/audio/harbor-theme.wav",
   sting: "/audio/navy-sting.wav",
-};
+});
 
 function ac(): AudioContext {
   if (!ctx) ctx = new AudioContext();

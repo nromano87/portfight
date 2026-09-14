@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
+import { assets } from "./asset";
 import type { WeaponId } from "./config";
 import { PLAYER_SPEED, UNIT, MAP, PIRATE_SCALE, weaponArt } from "./config";
 import type { LootKind } from "./harbor";
@@ -48,15 +49,15 @@ export const PIRATE_YAW = -Math.PI / 2;
 const PIRATE_H = 2.18 * UNIT * PIRATE_SCALE;
 const CHEST_H = 0.95 * UNIT;
 
-const PIRATE_URL: Record<PirateId, string> = {
+const PIRATE_URL: Record<PirateId, string> = assets({
   rustbeard: "/art/pirates/rustbeard.gltf",
   captainhightide: "/art/pirates/captainhightide.gltf",
   ladylara: "/art/pirates/ladylara.gltf",
   admiralironsides: "/art/pirates/admiralironsides.gltf",
   royalnavyadmiral: "/art/pirates/royalnavyadmiral.gltf",
-};
+});
 
-const SKIN_URL: Record<SkinId, string> = {
+const SKIN_URL: Record<SkinId, string> = assets({
   barrel: "/art/skins/barrel.gltf",
   catpajama: "/art/skins/catpajama.gltf",
   hotdog: "/art/skins/hotdog.gltf",
@@ -73,15 +74,15 @@ const SKIN_URL: Record<SkinId, string> = {
   "skeleton-limited": "/art/skins/skeleton-limited.gltf",
   "ghost-limited": "/art/skins/ghost-limited.gltf",
   "black-knight": "/art/skins/black-knight.gltf",
-};
+});
 
-const CHEST_URL: Record<ChestId, string> = {
+const CHEST_URL: Record<ChestId, string> = assets({
   gold: "/art/chests/gold.gltf",
   silver: "/art/chests/silver.gltf",
   copper: "/art/chests/copper.gltf",
-};
+});
 
-const PROP_URL: Record<PropId, string> = {
+const PROP_URL: Record<PropId, string> = assets({
   barrel: "/art/props/barrel.gltf",
   crate: "/art/props/crate.gltf",
   "crate-yellow": "/art/props/crate-yellow.gltf",
@@ -92,9 +93,9 @@ const PROP_URL: Record<PropId, string> = {
   fence: "/art/props/fence.gltf",
   sand: "/art/props/sand.gltf",
   driftwood: "/art/props/driftwood.gltf",
-};
+});
 
-const BUILDING_URL: Record<BuildingId, string> = {
+const BUILDING_URL: Record<BuildingId, string> = assets({
   "tiki-bar": "/art/buildings/tiki-bar.gltf",
   marketplace: "/art/buildings/marketplace.gltf",
   distillery: "/art/buildings/distillery.gltf",
@@ -102,23 +103,23 @@ const BUILDING_URL: Record<BuildingId, string> = {
   shipwright: "/art/buildings/shipwright.gltf",
   foundry: "/art/buildings/foundry.gltf",
   docks: "/art/buildings/docks.gltf",
-};
+});
 
-const TERRAIN_URL: Record<TerrainId, string> = {
+const TERRAIN_URL: Record<TerrainId, string> = assets({
   sand: "/art/terrain/sand.png",
   wood: "/art/terrain/wood.png",
   stone: "/art/terrain/stone.png",
   "wood-deck": "/art/terrain/wood-deck.png",
-};
+});
 
-const SHIP_URL: Record<ShipId, string> = {
+const SHIP_URL: Record<ShipId, string> = assets({
   sloop: "/art/ships/sloop.gltf",
   skiff: "/art/ships/skiff.gltf",
   "navy-sloop": "/art/ships/navy-sloop.gltf",
   galleon: "/art/ships/galleon.gltf",
   frigate: "/art/ships/frigate.gltf",
   "navy-frigate": "/art/ships/navy-frigate.gltf",
-};
+});
 
 export const PIRATE_NAMES: Record<PirateId, string> = {
   rustbeard: "Rustbeard",
@@ -136,13 +137,13 @@ export const PLAYABLE_PIRATES: PirateId[] = [
   "admiralironsides",
 ];
 
-export const PIRATE_ART: Record<PirateId, string> = {
+export const PIRATE_ART: Record<PirateId, string> = assets({
   rustbeard: "/art/pfps/rustbeard.png",
   captainhightide: "/art/pfps/captainhightide.png",
   ladylara: "/art/pfps/ladylara.png",
   admiralironsides: "/art/pfps/admiralironsides.png",
   royalnavyadmiral: "/art/pfps/royalnavyadmiral.png",
-};
+});
 
 export function pirateArt(id: PirateId): string {
   return PIRATE_ART[id];
